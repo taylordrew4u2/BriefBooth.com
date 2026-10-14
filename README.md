@@ -16,20 +16,29 @@ A consultation booking app for independent consultants, built with Next.js, Reac
 
 ## Before going live
 
-The repository contains the complete application and database schema. **Live authentication and bookings stay disabled until you connect your own Supabase project.** No project or deployment has been provisioned automatically.
+The repository contains the complete application and database schema. **Live authentication and bookings stay disabled until you connect your own Supabase project.** The Vercel project `briefbooth` is now created and linked to this repository. The Supabase Free integration is awaiting the owner’s acceptance of its Marketplace terms; no database or live deployment is confirmed yet.
 
-### 1. Create the free database
+### 1. Connect the free Vercel integration
 
-1. Create a Free project at [Supabase](https://supabase.com/dashboard). Free plans have limits and can pause inactive projects; check [current limits](https://supabase.com/pricing).
-2. Open **SQL Editor** and run `supabase/schema.sql` once in a fresh project. It creates tables, access policies, and booking functions. Do not rerun it against an existing installation without a migration.
-3. In the project’s **Connect** dialog, copy the project URL and publishable key. The publishable key is intended for browser use; row-level security protects private records. Never use a service-role or secret key here.
-4. Copy `.env.example` to `.env.local` and fill in these values:
+Use [Supabase through Vercel Marketplace](https://vercel.com/marketplace/supabase/supabase). It includes the database and accounts already used by BriefBooth, so no backend replacement is needed. The verified Marketplace plan is **Supabase Free Plan**, plan ID `free`, **$0/month**, with no payment method required. Select Free explicitly; do not select Pro or Team. Free plans have quotas and can pause inactive projects.
 
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
-NEXT_PUBLIC_GOOGLE_AUTH_ENABLED=false
+1. In Vercel, open the `briefbooth` project, then **Storage → Create Database → Supabase** (or open the Marketplace link above).
+2. Complete the owner-required acceptance of the integration terms. Installation cannot finish until this step is completed.
+3. Choose **Free** and connect the new `briefbooth` resource to this project. If the install was already started by CLI, finish that installation rather than creating a duplicate resource.
+4. The integration supplies `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` automatically. No application environment-variable rename is needed. The integration may also add database passwords and secret keys; keep those server-side and never prefix them with `NEXT_PUBLIC_`.
+5. Open the resource using **Open in Supabase**, then **SQL Editor**, and run `supabase/schema.sql` once in the new empty database. Do not rerun it against an existing installation without a migration.
+6. Pull the project’s development environment locally and restart the development server, or redeploy on Vercel so the browser build receives the new public configuration.
+
+For the linked local checkout, after terms acceptance, the pending install can be resumed with:
+
+```sh
+npx vercel@latest integration add supabase/supabase --plan free --name briefbooth --no-claim --no-env-pull --scope taylordrew4u2s-projects
+npx vercel@latest env pull .env.local --yes --scope taylordrew4u2s-projects
 ```
+
+Do not rerun resource creation if it has already succeeded. Inspect existing resources first. The app reads only the public URL and publishable key; booking privacy is enforced by the included database policies.
+
+If you already have a standalone Supabase Free project instead, connect it through the integration or copy `.env.example` to `.env.local` and set the same two public variables. The supported sign-in setup below still applies.
 
 ### 2. Configure sign-in
 
@@ -58,8 +67,8 @@ Open `http://localhost:3000`. The home page and interactive demo work before con
 
 ### 4. Deploy to Vercel
 
-1. Import this GitHub repository into Vercel and choose the branch containing the app. Framework: **Next.js**; root directory: repository root. Standard build command: `npm run build`.
-2. Add the environment variables above for Production (and Preview if needed), then deploy.
+1. The Vercel project is already linked to this GitHub repository. Choose the branch containing the app (`codex/briefbooth-booking` until merged). Framework: **Next.js**; root directory: repository root. Standard build command: `npm run build`.
+2. Finish the Free Marketplace integration and connect the resource to the desired environments, then deploy. The integration supplies the required public variables automatically.
 3. In **Project → Settings → Domains**, add the domain you already own and apply the exact DNS records Vercel shows at your registrar. Domain ownership does not eliminate hosting costs.
 4. Update the Supabase sign-in URLs to match the final domain and test sign-in after DNS is live.
 
