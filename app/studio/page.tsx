@@ -218,13 +218,13 @@ export default function Studio() {
             <p>A little organization. More time for your clients.</p>
           </div>
           {profile?.slug && profile.published && (
-            <Link
+            <a
               className="button"
               href={"/book/" + profile.slug}
               target="_blank"
             >
               View booking page ↗
-            </Link>
+            </a>
           )}
         </div>
         <nav className="studio-tabs" aria-label="Manage booking page">
@@ -586,9 +586,9 @@ export default function Studio() {
                             </details>
                           )}
                         </div>
-                        <Link href={"/manage/" + b.manage_token}>
+                        <a href={"/manage/" + b.manage_token}>
                           Manage booking ↗
-                        </Link>
+                        </a>
                       </article>
                     ))}
                   </div>

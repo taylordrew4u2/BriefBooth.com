@@ -1,5 +1,6 @@
 -- Run once in a new Supabase project's SQL editor.
-create extension if not exists btree_gist;
+create schema if not exists extensions;
+create extension if not exists btree_gist with schema extensions;
 create table public.profiles (
  id uuid primary key references auth.users on delete cascade,
  slug text unique not null check(slug ~ '^[a-z0-9][a-z0-9-]{2,39}$' and slug <> 'demo'),
@@ -107,10 +108,10 @@ begin
  update bookings set status='cancelled' where manage_token=p_token and status='confirmed' and starts_at>now();
  return found;
 end; $$;
-revoke all on function public.available_slots(uuid,date),public.create_booking(uuid,timestamptz,text,text,text,uuid),public.booking_details(uuid),public.cancel_booking(uuid) from public;
+revoke all on function public.available_slots(uuid,date),public.create_booking(uuid,timestamptz,text,text,text,uuid),public.booking_details(uuid),public.cancel_booking(uuid) from public, anon, authenticated;
 grant execute on function public.available_slots(uuid,date),public.create_booking(uuid,timestamptz,text,text,text,uuid),public.booking_details(uuid),public.cancel_booking(uuid) to anon,authenticated;
 -- Replace weekly hours in one transaction so clients never see a half-saved schedule.
-create function public.save_availability(p_hours jsonb) returns void language plpgsql security definer set search_path=public as $$
+create function public.save_availability(p_hours jsonb) returns void language plpgsql security invoker set search_path=public as $$
 begin
  if auth.uid() is null then raise exception 'Sign in first.'; end if;
  if jsonb_array_length(p_hours)>7 then raise exception 'One window per weekday is supported.'; end if;
@@ -118,7 +119,7 @@ begin
  insert into availability(owner_id,weekday,start_time,end_time)
  select auth.uid(),(x->>'weekday')::int,(x->>'start_time')::time,(x->>'end_time')::time from jsonb_array_elements(p_hours) x;
 end; $$;
-revoke all on function public.save_availability(jsonb) from public;
+revoke all on function public.save_availability(jsonb) from public, anon, authenticated;
 grant execute on function public.save_availability(jsonb) to authenticated;
 
 create function public.validate_timezone() returns trigger language plpgsql set search_path=public as $$
@@ -133,3 +134,7 @@ grant usage on schema public to anon,authenticated;
 grant select on profiles,services,availability to anon;
 grant select,insert,update,delete on profiles,services,availability,consultant_settings to authenticated;
 grant select on bookings to authenticated;
+
+revoke execute on function public.validate_timezone() from public, anon, authenticated;
+create index if not exists bookings_email_rate_limit on public.bookings(owner_id,lower(client_email),created_at desc);
+create index if not exists services_owner_id on public.services(owner_id);

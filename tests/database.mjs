@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 const db = new PGlite({ extensions: { btree_gist } });
 await db.exec(
-  `create role anon;create role authenticated;create schema auth;create table auth.users(id uuid primary key);create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema public,auth to anon,authenticated;`,
+  `create role anon;create role authenticated;create schema auth;create table auth.users(id uuid primary key);create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema public,auth to anon,authenticated;alter default privileges in schema public grant execute on functions to anon,authenticated;`,
 );
 await db.exec(readFileSync("supabase/schema.sql", "utf8"));
 await db.exec(
@@ -37,6 +37,8 @@ const day = (
   )
 ).rows[0].d;
 await db.exec("set role anon");
+await assert.rejects(()=>db.query("select save_availability('[]'::jsonb)"),/permission denied/);
+
 const slots = (
   await db.query("select * from available_slots($1,$2)", [service, day])
 ).rows;
