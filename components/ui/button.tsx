@@ -1,8 +1,8 @@
-import * as React from "react"
-import { Button as ButtonPrimitive } from "@base-ui/react/button"
-import { cva, type VariantProps } from "class-variance-authority"
+import * as React from "react";
+import { Button as ButtonPrimitive } from "@base-ui/react/button";
+import { cva, type VariantProps } from "class-variance-authority";
 
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/utils";
 
 /*
  * Atelier Button: quiet-luxury pills on light ground.
@@ -64,14 +64,15 @@ const buttonVariants = cva(
       variant: "default",
       size: "default",
     },
-  }
-)
+  },
+);
 
 export interface ButtonProps
-  extends Omit<ButtonPrimitive.Props, "className">,
+  extends
+    Omit<ButtonPrimitive.Props, "className">,
     VariantProps<typeof buttonVariants> {
-  className?: string
-  asChild?: boolean
+  className?: string;
+  asChild?: boolean;
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
@@ -82,9 +83,10 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     // the anchor nests inside the button instead of replacing it, which stacks
     // the icon above the label and puts a link inside a button.
     if (asChild && React.isValidElement(props.children)) {
-      const { children, ...rest } = props
+      const { children, ...rest } = props;
       return (
         <ButtonPrimitive
+          data-slot="button"
           ref={ref}
           className={cn(buttonVariants({ variant, size, className }))}
           {...rest}
@@ -94,18 +96,19 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
           // owns passing a single element for the slot to clone.
           render={children as React.ReactElement}
         />
-      )
+      );
     }
 
     return (
       <ButtonPrimitive
+        data-slot="button"
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
         {...props}
       />
-    )
-  }
-)
-Button.displayName = "Button"
+    );
+  },
+);
+Button.displayName = "Button";
 
-export { Button, buttonVariants }
+export { Button, buttonVariants };

@@ -34,6 +34,22 @@ try {
   await page
     .getByLabel(/What would you like to discuss/)
     .fill("Help defining my next steps.");
+  const actionStyle = await page
+    .getByRole("button", { name: "Choose a time" })
+    .evaluate((button) => {
+      const style = getComputedStyle(button);
+      return { background: style.backgroundColor, color: style.color };
+    });
+  assert.notEqual(
+    actionStyle.background,
+    "rgba(0, 0, 0, 0)",
+    "Booking action must have a visible background",
+  );
+  assert.notEqual(
+    actionStyle.background,
+    actionStyle.color,
+    "Booking action label must remain visible",
+  );
   await page.getByRole("button", { name: "Choose a time" }).click();
   const dates = page.getByLabel(/Choose a date/);
   await dates.selectOption(

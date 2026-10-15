@@ -168,7 +168,7 @@ p {
 button {
   color: inherit;
 }
-button:not([data-slot]) {
+:where(button:not([data-slot])) {
   border: 0;
   background: none;
 }
