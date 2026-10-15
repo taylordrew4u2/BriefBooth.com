@@ -23,6 +23,7 @@ type Booking = {
   status: string;
   service_id: string;
   manage_token: string;
+  meeting_mode: string;
 };
 const dayNames = [
   "Sunday",
@@ -82,7 +83,7 @@ export default function Studio() {
             .order("starts_at"),
           db()
             .from("consultant_settings")
-            .select("meeting_url")
+            .select("meeting_url,in_person_address")
             .eq("owner_id", user.id)
             .maybeSingle(),
         ]);
@@ -90,7 +91,11 @@ export default function Studio() {
         const [p, s, a, b, settings] = results;
         setProfile(
           p.data
-            ? { ...p.data, meeting_url: settings.data?.meeting_url || "" }
+            ? {
+                ...p.data,
+                meeting_url: settings.data?.meeting_url || "",
+                in_person_address: settings.data?.in_person_address || "",
+              }
             : {
                 id: user.id,
                 slug: "",
@@ -99,6 +104,7 @@ export default function Studio() {
                 bio: "",
                 timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                 meeting_url: "",
+                in_person_address: "",
                 published: false,
               },
         );
@@ -132,14 +138,14 @@ export default function Studio() {
     setBusy(true);
     setMessage("");
     try {
-      const { meeting_url, ...publicProfile } = profile;
+      const { meeting_url, in_person_address, ...publicProfile } = profile;
       const { error } = await db()
         .from("profiles")
         .upsert({ ...publicProfile, id: uid });
       if (error) throw error;
       const { error: settingsError } = await db()
         .from("consultant_settings")
-        .upsert({ owner_id: uid, meeting_url });
+        .upsert({ owner_id: uid, meeting_url, in_person_address });
       if (settingsError) throw settingsError;
       setMessage("Profile saved.");
     } catch (e) {
@@ -159,6 +165,7 @@ export default function Studio() {
         title: String(f.get("title")),
         description: String(f.get("description")),
         duration: Number(f.get("duration")),
+        meeting_modes: String(f.get("meeting_modes")).split(","),
       })
       .select()
       .single();
@@ -320,17 +327,35 @@ export default function Studio() {
                     />
                   </label>
                   <label>
-                    Meeting link{" "}
+                    Zoom meeting link{" "}
                     <span className="field-help">
                       Optional · shared only after booking
                     </span>
                     <Input
                       type="url"
                       pattern="https://.*"
-                      placeholder="https://meet.google.com/..."
+                      placeholder="https://zoom.us/j/..."
                       value={profile.meeting_url}
                       onChange={(e) =>
                         setProfile({ ...profile, meeting_url: e.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    In-person meeting address
+                    <span className="field-help">
+                      Shared only after booking
+                    </span>
+                    <Textarea
+                      maxLength={500}
+                      rows={2}
+                      value={profile.in_person_address}
+                      placeholder="Office address and arrival instructions"
+                      onChange={(e) =>
+                        setProfile({
+                          ...profile,
+                          in_person_address: e.target.value,
+                        })
                       }
                     />
                   </label>
@@ -409,6 +434,19 @@ export default function Studio() {
                         ))}
                       </select>
                     </label>
+                    <label>
+                      Meeting options
+                      <select
+                        name="meeting_modes"
+                        defaultValue="zoom,in_person"
+                      >
+                        <option value="zoom,in_person">
+                          Let clients choose: in person or Zoom
+                        </option>
+                        <option value="in_person">In person only</option>
+                        <option value="zoom">Zoom only</option>
+                      </select>
+                    </label>
                     <Button type="submit" disabled={busy}>
                       {busy ? "Adding…" : "Add consultation"}
                     </Button>
@@ -429,7 +467,12 @@ export default function Studio() {
                         <p>{s.description}</p>
                         <span>
                           {s.duration} minutes ·{" "}
-                          {s.active ? "Available for booking" : "Hidden"}
+                          {s.meeting_modes
+                            .map((mode) =>
+                              mode === "in_person" ? "In person" : "Zoom",
+                            )
+                            .join(" / ")}{" "}
+                          · {s.active ? "Available for booking" : "Hidden"}
                         </span>
                       </div>
                       <Button
@@ -579,9 +622,14 @@ export default function Studio() {
                               {b.client_email}
                             </a>
                           </p>
+                          <p>
+                            {b.meeting_mode === "in_person"
+                              ? "In-person consultation"
+                              : "Zoom consultation"}
+                          </p>
                           {b.notes && (
                             <details>
-                              <summary>Client notes</summary>
+                              <summary>Client intake</summary>
                               <p>{b.notes}</p>
                             </details>
                           )}

@@ -13,11 +13,15 @@ type Details = {
   ends_at: string;
   status: string;
   meeting_url: string;
+  meeting_mode: string;
+  in_person_address: string;
 };
 export default function Manage() {
   const [token, setToken] = useState<string | null>(null);
   useEffect(() => {
-    Promise.resolve().then(() => setToken(window.location.pathname.split("/")[2] || ""));
+    Promise.resolve().then(() =>
+      setToken(window.location.pathname.split("/")[2] || ""),
+    );
   }, []);
   const [booking, setBooking] = useState<Details | null>(null);
   const [message, setMessage] = useState("");
@@ -105,14 +109,26 @@ export default function Manage() {
                   Save this private link. It’s how you access and manage your
                   booking. No confirmation email is sent.
                 </p>
-                {booking.meeting_url.startsWith("https://") ? (
+                <p>
+                  <strong>
+                    {booking.meeting_mode === "in_person"
+                      ? "In-person consultation"
+                      : "Consultation via Zoom"}
+                  </strong>
+                </p>
+                {booking.meeting_mode === "in_person" ? (
+                  <p>
+                    {booking.in_person_address ||
+                      "Your consultant will confirm the meeting address with you."}
+                  </p>
+                ) : booking.meeting_url.startsWith("https://") ? (
                   <a
                     className="button"
                     href={booking.meeting_url}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    Open meeting link ↗
+                    Join Zoom consultation ↗
                   </a>
                 ) : (
                   <p>Your consultant will arrange meeting details with you.</p>
@@ -124,7 +140,9 @@ export default function Manage() {
                         booking.title + " with " + booking.consultant,
                         booking.starts_at,
                         booking.ends_at,
-                        booking.meeting_url,
+                        booking.meeting_mode === "in_person"
+                          ? booking.in_person_address
+                          : booking.meeting_url,
                       )
                     }
                   >

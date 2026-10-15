@@ -19,21 +19,27 @@ try {
     await page.getByText("Do my clients need an account?").click();
     await page
       .getByText(
-        "No. They select a consultation, choose an available time, and enter their name and email.",
+        "No. They select a consultation, complete a short intake, and choose an available time.",
       )
       .waitFor();
   }
   await page.setViewportSize({ width: 390, height: 1000 });
   await page.goto(base + "/book/demo");
   await page.getByRole("button", { name: /Discovery call/ }).click();
+  await page
+    .getByLabel("How would you like to meet?")
+    .selectOption("in_person");
+  await page.getByLabel("Your name").fill("Test Client");
+  await page.getByLabel("Email address").fill("client@example.com");
+  await page
+    .getByLabel(/What would you like to discuss/)
+    .fill("Help defining my next steps.");
+  await page.getByRole("button", { name: "Choose a time" }).click();
   const dates = page.getByLabel(/Choose a date/);
   await dates.selectOption(
     await dates.locator("option").nth(2).getAttribute("value"),
   );
   await page.getByRole("button", { name: /9:00/ }).first().click();
-  await page.getByRole("button", { name: "Enter your details" }).click();
-  await page.getByLabel("Your name").fill("Test Client");
-  await page.getByLabel("Email address").fill("client@example.com");
   await page.getByRole("button", { name: "Try demo booking" }).click();
   await page
     .getByRole("heading", { name: "That’s how easy booking feels." })

@@ -16,16 +16,20 @@ export default function Booking() {
   const bookingRequest = useRef<{ key: string; id: string } | null>(null);
   const [slug, setSlug] = useState<string | null>(null);
   useEffect(() => {
-    Promise.resolve().then(() => setSlug(window.location.pathname.split("/")[2] || ""));
+    Promise.resolve().then(() =>
+      setSlug(window.location.pathname.split("/")[2] || ""),
+    );
   }, []);
   const demo = slug === "demo";
   const [profile, setProfile] = useState<Profile | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [service, setService] = useState<Service | null>(null);
+  const [meetingMode, setMeetingMode] = useState("zoom");
   const [day, setDay] = useState("");
   const [slots, setSlots] = useState<string[]>([]);
   const [slot, setSlot] = useState("");
   const [stage, setStage] = useState(0);
+  const [intake, setIntake] = useState({ name: "", email: "", notes: "" });
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -60,7 +64,7 @@ export default function Booking() {
             .order("duration");
           if (se) throw se;
           if (live) {
-            setProfile({ ...p, meeting_url: "" });
+            setProfile({ ...p, meeting_url: "", in_person_address: "" });
             setServices(s || []);
           }
         }
@@ -148,33 +152,42 @@ export default function Booking() {
       };
     });
   }
-  async function submit(e: React.FormEvent<HTMLFormElement>) {
+  function continueIntake(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    if (f.get("website")) return;
+    setIntake({
+      name: String(f.get("name")),
+      email: String(f.get("email")),
+      notes: String(f.get("notes")),
+    });
+    setStage(2);
+    setMessage("");
+  }
+  async function submit() {
     if (demo) {
       setConfirmed(true);
       return;
     }
     setBusy(true);
     setMessage("");
-    const f = new FormData(e.currentTarget);
-    if (f.get("website")) {
-      setBusy(false);
-      return;
-    }
     try {
-      const requestKey = service!.id + slot + String(f.get("email"));
+      const requestKey = service!.id + slot + intake.email + meetingMode;
       if (bookingRequest.current?.key !== requestKey)
         bookingRequest.current = { key: requestKey, id: crypto.randomUUID() };
       const { data, error } = await db().rpc("create_booking", {
         p_request: bookingRequest.current.id,
         p_service: service!.id,
         p_start: slot,
-        p_name: String(f.get("name")),
-        p_email: String(f.get("email")),
-        p_notes: String(f.get("notes")),
+        p_name: intake.name,
+        p_email: intake.email,
+        p_notes: intake.notes,
+        p_meeting_mode: meetingMode,
       });
       if (error) throw error;
-      window.location.assign(new URL("/manage/" + data + "/", window.location.origin).href);
+      window.location.assign(
+        new URL("/manage/" + data + "/", window.location.origin).href,
+      );
     } catch (e) {
       setMessage(
         e instanceof Error
@@ -227,9 +240,11 @@ export default function Booking() {
                   <p>{service.description}</p>
                   <span>
                     {service.duration} minutes ·{" "}
-                    {profile.meeting_url
-                      ? "Online consultation"
-                      : "Meeting details arranged by consultant"}
+                    {service.meeting_modes
+                      .map((mode) =>
+                        mode === "in_person" ? "In person" : "Zoom",
+                      )
+                      .join(" or ")}
                   </span>
                 </div>
               )}
@@ -274,15 +289,15 @@ export default function Booking() {
                     {stage === 0
                       ? "What can we help with?"
                       : stage === 1
-                        ? "Find a time that works."
-                        : "Let’s make it official."}
+                        ? "Tell us what you need."
+                        : "Find a time that works."}
                   </h2>
                   <p className="section-subtitle">
                     {stage === 0
                       ? "Choose a consultation to get started."
                       : stage === 1
-                        ? "Choose a date, then an available time."
-                        : "Just a few details before we confirm your consultation."}
+                        ? "Share a few details to help your consultant prepare."
+                        : "Choose a date and an available time, then confirm your consultation."}
                   </p>
                   {stage === 0 ? (
                     <div className="service-list">
@@ -298,6 +313,7 @@ export default function Booking() {
                             key={s.id}
                             onClick={() => {
                               setService(s);
+                              setMeetingMode(s.meeting_modes[0]);
                               setStage(1);
                               setDay("");
                               setSlot("");
@@ -315,7 +331,7 @@ export default function Booking() {
                         ))
                       )}
                     </div>
-                  ) : stage === 1 ? (
+                  ) : stage === 2 ? (
                     <>
                       <label>
                         Choose a date{" "}
@@ -383,38 +399,70 @@ export default function Booking() {
                             )}
                           </div>
                           {slot && (
-                            <Button
-                              className="form-submit"
-                              onClick={() => setStage(2)}
-                            >
-                              Enter your details{" "}
-                              <span aria-hidden="true">→</span>
-                            </Button>
+                            <>
+                              <div className="appointment-summary">
+                                <strong>{service?.title}</strong>
+                                <span>
+                                  {new Date(slot).toLocaleString(undefined, {
+                                    dateStyle: "full",
+                                    timeStyle: "short",
+                                    timeZone: timezone,
+                                  })}
+                                </span>
+                                <small>
+                                  {timezone} · {service?.duration} minutes ·{" "}
+                                  {meetingMode === "in_person"
+                                    ? "In person"
+                                    : "Zoom"}
+                                </small>
+                              </div>
+                              <Button
+                                className="form-submit"
+                                onClick={submit}
+                                disabled={busy}
+                              >
+                                {busy
+                                  ? "Confirming…"
+                                  : demo
+                                    ? "Try demo booking"
+                                    : "Confirm booking"}{" "}
+                                <span aria-hidden="true">→</span>
+                              </Button>
+                            </>
                           )}
                         </>
                       )}
                     </>
                   ) : (
                     <>
-                      <div className="appointment-summary">
-                        <strong>{service?.title}</strong>
-                        <span>
-                          {new Date(slot).toLocaleString(undefined, {
-                            dateStyle: "full",
-                            timeStyle: "short",
-                            timeZone: timezone,
-                          })}
-                        </span>
-                        <small>
-                          {timezone} · {service?.duration} minutes
-                        </small>
-                      </div>
-                      <form onSubmit={submit}>
+                      <form onSubmit={continueIntake}>
+                        <fieldset className="meeting-options">
+                          <legend>How would you like to meet?</legend>
+                          <div className="meeting-options-grid">
+                            {service?.meeting_modes.map((mode) => (
+                              <label className="meeting-mode-option" key={mode}>
+                                <Input
+                                  type="radio"
+                                  name="meeting_mode"
+                                  value={mode}
+                                  checked={meetingMode === mode}
+                                  onChange={() => setMeetingMode(mode)}
+                                />
+                                <span>
+                                  {mode === "in_person"
+                                    ? "In-person consultation"
+                                    : "Consultation via Zoom"}
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </fieldset>
                         <div className="form-row">
                           <label>
                             Your name
                             <Input
                               name="name"
+                              defaultValue={intake.name}
                               autoComplete="name"
                               required
                               maxLength={100}
@@ -425,6 +473,7 @@ export default function Booking() {
                             Email address
                             <Input
                               name="email"
+                              defaultValue={intake.email}
                               autoComplete="email"
                               type="email"
                               maxLength={254}
@@ -438,6 +487,7 @@ export default function Booking() {
                           <span className="field-help">Optional</span>
                           <Textarea
                             name="notes"
+                            defaultValue={intake.notes}
                             rows={3}
                             maxLength={2000}
                             placeholder="A little context helps make the most of our time."
@@ -461,12 +511,7 @@ export default function Booking() {
                           className="form-submit"
                           disabled={busy}
                         >
-                          {busy
-                            ? "Confirming…"
-                            : demo
-                              ? "Try demo booking"
-                              : "Confirm booking"}{" "}
-                          <span aria-hidden="true">↗</span>
+                          Choose a time <span aria-hidden="true">↗</span>
                         </Button>
                       </form>
                     </>

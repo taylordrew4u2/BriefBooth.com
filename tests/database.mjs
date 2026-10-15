@@ -18,7 +18,7 @@ await db.query(
   [owner, other],
 );
 await db.query(
-  "insert into consultant_settings values ($1,'https://meet.example.com/private')",
+  "insert into consultant_settings(owner_id,meeting_url,in_person_address) values ($1,'https://zoom.us/j/private','123 Test Street, Suite 4')",
   [owner],
 );
 const service = (
@@ -37,7 +37,10 @@ const day = (
   )
 ).rows[0].d;
 await db.exec("set role anon");
-await assert.rejects(()=>db.query("select save_availability('[]'::jsonb)"),/permission denied/);
+await assert.rejects(
+  () => db.query("select save_availability('[]'::jsonb)"),
+  /permission denied/,
+);
 
 const slots = (
   await db.query("select * from available_slots($1,$2)", [service, day])
@@ -104,7 +107,7 @@ await assert.rejects(
 assert.equal(
   (await db.query("select * from booking_details($1)", [token])).rows[0]
     .meeting_url,
-  "https://meet.example.com/private",
+  "https://zoom.us/j/private",
 );
 assert.equal(
   (
@@ -217,7 +220,68 @@ assert(retrySlots.length > 0);
   ).rows[0].token;
   assert.equal(first, second, "Retried request returns the same private link");
 }
+// Meeting format is validated on the server and private details are format-specific.
+await db.query(
+  "update services set meeting_modes=array['zoom','in_person'] where id=$1",
+  [service],
+);
+await assert.rejects(
+  () =>
+    db.query("update services set meeting_modes=array['phone'] where id=$1", [
+      service,
+    ]),
+  /check constraint/,
+);
+const free = (
+  await db.query("select * from available_slots($1,$2)", [service, day])
+).rows;
+await db.exec("set role anon");
+await assert.rejects(
+  () =>
+    db.query(
+      "select create_booking($1,$2,'Client','mode@example.com','',null,'phone')",
+      [service, free[0].starts_at],
+    ),
+  /available meeting option/,
+);
+const inPerson = (
+  await db.query(
+    "select create_booking($1,$2,'Client','person@example.com','Intake answer',null,'in_person') as token",
+    [service, free[0].starts_at],
+  )
+).rows[0].token;
+const detail = (await db.query("select * from booking_details($1)", [inPerson]))
+  .rows[0];
+assert.equal(detail.meeting_mode, "in_person");
+assert.equal(detail.in_person_address, "123 Test Street, Suite 4");
+assert.equal(
+  detail.meeting_url,
+  "",
+  "In-person confirmation never exposes Zoom URL",
+);
+const zoom = (await db.query("select * from booking_details($1)", [token]))
+  .rows[0];
+assert.equal(zoom.meeting_mode, "zoom");
+assert.equal(
+  zoom.in_person_address,
+  "",
+  "Zoom confirmation never exposes street address",
+);
+await assert.rejects(
+  () =>
+    db.query(
+      "select create_booking($1,$2,'Client','mode2@example.com','',null,'zoom')",
+      [service, free[0].starts_at],
+    ),
+  /no longer available/,
+);
+assert.equal(
+  (await db.query("select * from consultant_settings")).rows.length,
+  0,
+);
+await db.query("select cancel_booking($1)", [inPerson]);
+await db.exec("reset role");
 console.log(
-  "Database checks passed: slots, overlap prevention, validation, cancellation, privacy, tenant isolation, atomic hours, timezone validation, DST.",
+  "Database checks passed: slots, overlap prevention, validation, cancellation, privacy, tenant isolation, atomic hours, timezone validation, DST, meeting modes and private locations.",
 );
 await db.close();

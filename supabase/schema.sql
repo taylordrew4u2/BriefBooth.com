@@ -12,7 +12,8 @@ create table public.profiles (
 );
 create table public.consultant_settings (
  owner_id uuid primary key references public.profiles on delete cascade,
- meeting_url text not null default '' check(meeting_url='' or meeting_url ~ '^https://')
+ meeting_url text not null default '' check(meeting_url='' or meeting_url ~ '^https://'),
+ in_person_address text not null default '' check(length(in_person_address)<=500)
 );
 create table public.services (
  id uuid primary key default gen_random_uuid(),
@@ -20,6 +21,7 @@ create table public.services (
  title text not null check(length(title) between 1 and 100),
  description text not null default '' check(length(description)<=500),
  duration integer not null check(duration in (15,30,45,60,90)),
+ meeting_modes text[] not null default array['zoom']::text[] check(cardinality(meeting_modes) between 1 and 2 and meeting_modes <@ array['zoom','in_person']::text[]),
  active boolean not null default true
 );
 create table public.availability (
@@ -39,6 +41,7 @@ create table public.bookings (
  notes text not null default '' check(length(notes)<=2000),
  starts_at timestamptz not null,
  ends_at timestamptz not null,
+ meeting_mode text not null default 'zoom' check(meeting_mode in ('zoom','in_person')),
  status text not null default 'confirmed' check(status in ('confirmed','cancelled')),
  manage_token uuid unique not null default gen_random_uuid(),
  request_id uuid unique not null default gen_random_uuid(),
@@ -72,7 +75,7 @@ returns table(starts_at timestamptz) language sql stable security definer set se
  and tstzrange(b.starts_at,b.ends_at,'[)') && tstzrange(g.t,g.t+make_interval(mins=>s.duration),'[)'))
  order by g.t;
 $$;
-create function public.create_booking(p_service uuid,p_start timestamptz,p_name text,p_email text,p_notes text default '',p_request uuid default null)
+create function public.create_booking(p_service uuid,p_start timestamptz,p_name text,p_email text,p_notes text default '',p_request uuid default null,p_meeting_mode text default 'zoom')
 returns uuid language plpgsql security definer set search_path=public as $$
 declare svc services; prof profiles; token uuid; prior bookings;
 begin
@@ -80,27 +83,28 @@ begin
  perform pg_advisory_xact_lock(hashtextextended(p_request::text,1));
  select * into prior from bookings where request_id=p_request;
  if prior.id is not null then
- if prior.service_id=p_service and prior.starts_at=p_start and prior.client_email=lower(trim(p_email)) then return prior.manage_token; end if;
+ if prior.service_id=p_service and prior.starts_at=p_start and prior.client_email=lower(trim(p_email)) and prior.meeting_mode=p_meeting_mode then return prior.manage_token; end if;
  raise exception 'This booking request has already been used.';
  end if;
  end if;
  select * into svc from services where id=p_service and active;
  select * into prof from profiles where id=svc.owner_id and published;
  if prof.id is null then raise exception 'This consultation is unavailable.'; end if;
+ if p_meeting_mode is null or not(p_meeting_mode=any(svc.meeting_modes)) then raise exception 'Choose an available meeting option.'; end if;
  -- Serialize bookings per consultant. Exclusion constraint is an additional concurrency guarantee.
  perform pg_advisory_xact_lock(hashtextextended(prof.id::text,0));
  if p_email !~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$' or length(trim(p_name))=0 then raise exception 'Enter a valid name and email.'; end if;
  if not exists(select 1 from available_slots(p_service,(p_start at time zone prof.timezone)::date) a where a.starts_at=p_start) then raise exception 'That time is no longer available. Please choose another.'; end if;
  -- Bound automated/repeated reservations per address without disclosing client records.
  if (select count(*) from bookings where lower(client_email)=lower(trim(p_email)) and owner_id=prof.id and created_at>now()-interval '1 hour')>=5 then raise exception 'Too many bookings. Please try again later.'; end if;
- insert into bookings(owner_id,service_id,client_name,client_email,notes,starts_at,ends_at,request_id)
- values(prof.id,svc.id,trim(p_name),lower(trim(p_email)),p_notes,p_start,p_start+make_interval(mins=>svc.duration),coalesce(p_request,gen_random_uuid())) returning manage_token into token;
+ insert into bookings(owner_id,service_id,client_name,client_email,notes,starts_at,ends_at,request_id,meeting_mode)
+ values(prof.id,svc.id,trim(p_name),lower(trim(p_email)),p_notes,p_start,p_start+make_interval(mins=>svc.duration),coalesce(p_request,gen_random_uuid()),p_meeting_mode) returning manage_token into token;
  return token;
 end; $$;
 create function public.booking_details(p_token uuid)
-returns table(client_name text,title text,consultant text,starts_at timestamptz,ends_at timestamptz,status text,meeting_url text)
+returns table(client_name text,title text,consultant text,starts_at timestamptz,ends_at timestamptz,status text,meeting_url text,meeting_mode text,in_person_address text)
 language sql stable security definer set search_path=public as $$
- select b.client_name,s.title,p.name,b.starts_at,b.ends_at,b.status,coalesce(cs.meeting_url,'')
+ select b.client_name,s.title,p.name,b.starts_at,b.ends_at,b.status,case when b.meeting_mode='zoom' then coalesce(cs.meeting_url,'') else '' end,b.meeting_mode,case when b.meeting_mode='in_person' then coalesce(cs.in_person_address,'') else '' end
  from bookings b join services s on s.id=b.service_id join profiles p on p.id=b.owner_id left join consultant_settings cs on cs.owner_id=p.id where b.manage_token=p_token;
 $$;
 create function public.cancel_booking(p_token uuid) returns boolean language plpgsql security definer set search_path=public as $$
@@ -108,8 +112,8 @@ begin
  update bookings set status='cancelled' where manage_token=p_token and status='confirmed' and starts_at>now();
  return found;
 end; $$;
-revoke all on function public.available_slots(uuid,date),public.create_booking(uuid,timestamptz,text,text,text,uuid),public.booking_details(uuid),public.cancel_booking(uuid) from public, anon, authenticated;
-grant execute on function public.available_slots(uuid,date),public.create_booking(uuid,timestamptz,text,text,text,uuid),public.booking_details(uuid),public.cancel_booking(uuid) to anon,authenticated;
+revoke all on function public.available_slots(uuid,date),public.create_booking(uuid,timestamptz,text,text,text,uuid,text),public.booking_details(uuid),public.cancel_booking(uuid) from public, anon, authenticated;
+grant execute on function public.available_slots(uuid,date),public.create_booking(uuid,timestamptz,text,text,text,uuid,text),public.booking_details(uuid),public.cancel_booking(uuid) to anon,authenticated;
 -- Replace weekly hours in one transaction so clients never see a half-saved schedule.
 create function public.save_availability(p_hours jsonb) returns void language plpgsql security invoker set search_path=public as $$
 begin

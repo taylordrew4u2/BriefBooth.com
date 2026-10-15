@@ -15,6 +15,7 @@ type ServiceRow = {
   description: string;
   duration: number;
   active: boolean;
+  meeting_modes: string[];
 };
 type HoursRow = {
   id: string;
@@ -33,6 +34,7 @@ type BookingRow = {
   starts_at: string;
   ends_at: string;
   status: string;
+  meeting_mode: string;
   manage_token: string;
   created_at: string;
 };
@@ -49,7 +51,11 @@ export type Database = {
       services: Table<ServiceRow>;
       availability: Table<HoursRow>;
       bookings: Table<BookingRow>;
-      consultant_settings: Table<{ owner_id: string; meeting_url: string }>;
+      consultant_settings: Table<{
+        owner_id: string;
+        meeting_url: string;
+        in_person_address: string;
+      }>;
     };
     Views: Record<string, never>;
     Enums: Record<string, never>;
@@ -67,6 +73,7 @@ export type Database = {
           p_email: string;
           p_notes: string;
           p_request?: string;
+          p_meeting_mode?: string;
         };
         Returns: string;
       };
@@ -79,7 +86,9 @@ export type Database = {
           starts_at: string;
           ends_at: string;
           status: string;
+          meeting_mode: string;
           meeting_url: string;
+          in_person_address: string;
         }[];
       };
       cancel_booking: { Args: { p_token: string }; Returns: boolean };

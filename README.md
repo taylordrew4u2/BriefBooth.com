@@ -4,7 +4,7 @@ Consultation booking for independent consultants. Built with Next.js, React, Typ
 
 ## Hosting and cost
 
-The intended hosting is **Cloudflare Pages Free + Supabase Free**. There are no payment, AI, SMS, paid calendar, or server-runtime dependencies. No paid fallback is configured. Free services have quotas and may limit or pause service when limits are reached.
+The live site is [briefbooth.pages.dev](https://briefbooth.pages.dev). The custom domain [briefbooth.com](https://briefbooth.com) is also serving the app from Cloudflare over HTTPS. Hosting uses **Cloudflare Pages Free + Supabase Free**. There are no payment, AI, SMS, paid calendar, or server-runtime dependencies. No paid fallback is configured. Free services have quotas and may limit or pause service when limits are reached.
 
 The existing Vercel team was already on Pro. BriefBooth's Vercel project is paused, preview deployments disabled, and Git builds ignored to prevent this app using that paid hosting. Other projects and the team's subscription were not changed. Do not resume Vercel deployment for this app under the strict free-only requirement.
 
@@ -14,7 +14,9 @@ The Supabase Free database is connected and its schema has been applied and test
 
 - Consultant profile, public booking address, private meeting URL, publish/hide controls.
 - Consultation types and weekly availability in the consultant's timezone.
-- Account-free client booking, with times displayed in the client's timezone.
+- Account-free client booking: consultation → intake and meeting format → available time → confirmation.
+- Consultants offer in-person appointments, Zoom, or both. Clients choose during intake; the address or Zoom link appears only after booking.
+- Times are displayed in the client's timezone.
 - Database-enforced overlap prevention, two-hour notice, and a 60-day window.
 - Private confirmation links, calendar downloads, and cancellation that reopens the slot.
 - Consultant booking list protected by row-level security.

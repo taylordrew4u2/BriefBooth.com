@@ -1633,3 +1633,5 @@ textarea {
 .time-option.active{background:#E7F2FE!important;color:var(--brand-black-grey);border-color:var(--brand-blue)!important}
 .preview-profile .avatar,.avatar.large{background:#F5F5F5;color:var(--brand-black-grey);border-color:var(--brand-light-grey)}
 @media(max-width:740px){.hero-actions{flex-direction:column;align-items:flex-start;gap:8px}.hero-actions .button{font-size:19px;padding-inline:16px}.time-option.active{color:var(--brand-black-grey)}}
+
+.meeting-options{border:0;padding:0;margin:0 0 24px}.meeting-options legend{font-size:14px;font-weight:600;margin-bottom:10px}.meeting-options-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.meeting-mode-option{display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:10px;padding:14px;margin:0;cursor:pointer}.meeting-mode-option:has(input:checked){background:var(--accent);border-color:var(--brand-blue)}.meeting-mode-option input{width:18px!important;height:18px!important;min-height:18px!important;padding:0!important;flex:none;accent-color:var(--brand-blue)}.meeting-mode-option span{font-size:14px;line-height:1.4}

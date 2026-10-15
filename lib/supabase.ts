@@ -23,6 +23,7 @@ export type Profile = {
   bio: string;
   timezone: string;
   meeting_url: string;
+  in_person_address: string;
   published: boolean;
 };
 export type Service = {
@@ -32,6 +33,7 @@ export type Service = {
   description: string;
   duration: number;
   active: boolean;
+  meeting_modes: string[];
 };
 export const demoProfile: Profile = {
   id: "demo",
@@ -41,6 +43,7 @@ export const demoProfile: Profile = {
   bio: "A little clarity goes a long way. Let’s talk through your next move and turn a big question into a practical plan.",
   timezone: "America/New_York",
   meeting_url: "",
+  in_person_address: "",
   published: true,
 };
 export const demoServices: Service[] = [
@@ -52,6 +55,7 @@ export const demoServices: Service[] = [
       "A quick conversation to connect, explore your goals, and see how I can help.",
     duration: 15,
     active: true,
+    meeting_modes: ["zoom", "in_person"],
   },
   {
     id: "strategy",
@@ -61,5 +65,6 @@ export const demoServices: Service[] = [
       "Dedicated time to work through a challenge and map out your next steps.",
     duration: 60,
     active: true,
+    meeting_modes: ["zoom", "in_person"],
   },
 ];
