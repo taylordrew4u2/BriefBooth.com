@@ -1,6 +1,9 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
+import { PriceBreakdown } from "./price-breakdown";
+import { money, priceBreakdown } from "@/lib/pricing";
+import { paymentAction } from "@/lib/payments";
 import { Logo } from "@/components/site-header";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -183,7 +186,7 @@ export default function Booking() {
       const requestKey = service!.id + slot + intake.email + meetingMode;
       if (bookingRequest.current?.key !== requestKey)
         bookingRequest.current = { key: requestKey, id: crypto.randomUUID() };
-      const { data, error } = await db().rpc("book_consultation", {
+      const booking = {
         p_request: bookingRequest.current.id,
         p_service: service!.id,
         p_start: slot,
@@ -191,7 +194,15 @@ export default function Booking() {
         p_email: intake.email,
         p_answers: answers,
         p_meeting_mode: meetingMode,
-      });
+      };
+      if (service!.amount_cents > 0) {
+        const result = await paymentAction("checkout", { booking, expected_total: priceBreakdown(service!.amount_cents).total });
+        const checkout = new URL(result.url);
+        if (checkout.protocol !== "https:" || checkout.hostname !== "checkout.stripe.com") throw new Error("Invalid checkout link.");
+        window.location.assign(checkout.href);
+        return;
+      }
+      const { data, error } = await db().rpc("book_consultation", booking);
       if (error) throw error;
       window.location.assign(
         new URL("/manage/" + data + "/", window.location.origin).href,
@@ -339,7 +350,7 @@ export default function Booking() {
                             <div>
                               <h3>{s.title}</h3>
                               <p>{s.description}</p>
-                              <span>{s.duration} min</span>
+                              <span>{s.duration} min · {s.amount_cents ? money(priceBreakdown(s.amount_cents).total) + " total" : "Free"}</span>
                             </div>
                             <span className="service-arrow" aria-hidden="true">
                               ↗
@@ -454,6 +465,7 @@ export default function Booking() {
                                     : "Zoom"}
                                 </small>
                               </div>
+                              <PriceBreakdown amount={service?.amount_cents || 0} />
                               <Button
                                 className="form-submit"
                                 onClick={submit}
@@ -463,7 +475,7 @@ export default function Booking() {
                                   ? "Confirming…"
                                   : demo
                                     ? "Try demo booking"
-                                    : "Confirm booking"}{" "}
+                                    : service?.amount_cents ? "Continue to secure checkout" : "Confirm booking"}{" "}
                                 <span aria-hidden="true">→</span>
                               </Button>
                             </>

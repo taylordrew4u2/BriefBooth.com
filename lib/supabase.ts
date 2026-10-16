@@ -36,6 +36,7 @@ export type Service = {
   duration: number;
   active: boolean;
   meeting_modes: string[];
+  amount_cents: number;
 };
 export const demoProfile: Profile = {
   id: "demo",
@@ -58,6 +59,7 @@ export const demoServices: Service[] = [
       "A quick conversation to connect, explore your goals, and see how I can help.",
     duration: 15,
     active: true,
+    amount_cents: 0,
     meeting_modes: ["zoom", "in_person"],
   },
   {
@@ -68,6 +70,7 @@ export const demoServices: Service[] = [
       "Dedicated time to work through a challenge and map out your next steps.",
     duration: 60,
     active: true,
+    amount_cents: 0,
     meeting_modes: ["zoom", "in_person"],
   },
 ];

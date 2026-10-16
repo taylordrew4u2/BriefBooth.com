@@ -1,5 +1,8 @@
 "use client";
 import { IntakeTemplatePicker } from "@/components/intake-template-picker";
+import { PriceBreakdown } from "@/components/price-breakdown";
+import { paymentAction } from "@/lib/payments";
+import { money, priceBreakdown } from "@/lib/pricing";
 import { defaultQuestions } from "@/lib/intake";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -55,6 +58,20 @@ export default function Studio() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [adding, setAdding] = useState(false);
+  const [amount, setAmount] = useState("0");
+  const [paymentStatus, setPaymentStatus] = useState("Connect Stripe to offer paid consultations.");
+  async function stripeAction(action: "account" | "connect") {
+    setBusy(true);
+    try {
+      const result = await paymentAction(action);
+      if (result.url) {
+        const url = new URL(result.url);
+        if (url.protocol !== "https:" || !url.hostname.endsWith(".stripe.com")) throw new Error("Invalid Stripe link.");
+        window.location.assign(url.href);
+      } else setPaymentStatus(result.ready ? (result.live ? "Stripe is ready to accept payments." : "Stripe sandbox connected. Test payments only.") : "Finish Stripe setup to accept payments.");
+    } catch (e) { setMessage(e instanceof Error ? e.message : "Unable to connect Stripe."); }
+    finally { setBusy(false); }
+  }
   useEffect(() => {
     if (!configured) {
       router.replace("/account");
@@ -70,6 +87,7 @@ export default function Studio() {
           return;
         }
         setUid(user.id);
+        if (new URLSearchParams(window.location.search).has("stripe")) setTab("consultations");
         const results = await Promise.all([
           db().from("profiles").select("*").eq("id", user.id).maybeSingle(),
           db()
@@ -161,6 +179,12 @@ export default function Studio() {
     e.preventDefault();
     setBusy(true);
     const f = new FormData(e.currentTarget);
+    const amountCents = Math.round(Number(f.get("amount")) * 100);
+    if (amountCents > 0 && amountCents < 50) {
+      setMessage("Choose free or a consultation amount of at least $0.50.");
+      setBusy(false);
+      return;
+    }
     const { data, error } = await db()
       .from("services")
       .insert({
@@ -168,6 +192,7 @@ export default function Studio() {
         title: String(f.get("title")),
         description: String(f.get("description")),
         duration: Number(f.get("duration")),
+        amount_cents: amountCents,
         meeting_modes: String(f.get("meeting_modes")).split(","),
       })
       .select()
@@ -454,6 +479,13 @@ export default function Studio() {
                     {adding ? "Close form" : "+ Add consultation"}
                   </Button>
                 </div>
+                <div className="inset-form">
+                  <h3>Get paid for your expertise</h3>
+                  <p>{paymentStatus}</p>
+                  <p className="field-help">Optional for free consultations. Stripe collects processing fees from your account. BriefBooth adds no commission or subscription. US-based consultants and USD payments are supported initially. Handle refunds and disputes in your Stripe dashboard.</p>
+                  <div className="form-row"><Button disabled={busy} onClick={()=>stripeAction("connect")}>Set up Stripe payments</Button><Button variant="outline" disabled={busy} onClick={()=>stripeAction("account")}>Check payment connection</Button></div>
+                  <a className="text-link" href="https://dashboard.stripe.com/" target="_blank" rel="noopener noreferrer">Open Stripe dashboard ↗</a>
+                </div>
                 {adding && (
                   <form className="inset-form" onSubmit={addService}>
                     <label>
@@ -469,6 +501,12 @@ export default function Studio() {
                       Description
                       <Textarea name="description" maxLength={500} rows={2} />
                     </label>
+                    <label>
+                      Consultation amount (USD)
+                      <Input name="amount" type="number" required min="0" max="99999.99" step="0.01" value={amount} onChange={e=>setAmount(e.target.value)} />
+                      <span className="field-help">Use 0 for free, or at least $0.50. For paid consultations, the client price includes estimated processing so you can aim to receive this amount. Actual fees vary.</span>
+                    </label>
+                    <PriceBreakdown amount={Math.round(Math.max(0, Math.min(99999.99, Number(amount) || 0)) * 100)} />
                     <label>
                       Duration
                       <select name="duration" defaultValue="30">
@@ -511,7 +549,7 @@ export default function Studio() {
                         <h3>{s.title}</h3>
                         <p>{s.description}</p>
                         <span>
-                          {s.duration} minutes ·{" "}
+                          {s.amount_cents ? money(priceBreakdown(s.amount_cents).total) + " client total" : "Free"} · {s.duration} minutes ·{" "}
                           {s.meeting_modes
                             .map((mode) =>
                               mode === "in_person" ? "In person" : "Zoom",

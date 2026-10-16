@@ -18,6 +18,7 @@ type ServiceRow = {
   duration: number;
   active: boolean;
   meeting_modes: string[];
+  amount_cents: number;
 };
 type HoursRow = {
   id: string;
