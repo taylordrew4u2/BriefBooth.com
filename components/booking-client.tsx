@@ -13,6 +13,7 @@ import {
   Service,
 } from "@/lib/supabase";
 export default function Booking() {
+  const stepHeading = useRef<HTMLHeadingElement>(null);
   const bookingRequest = useRef<{ key: string; id: string } | null>(null);
   const [slug, setSlug] = useState<string | null>(null);
   useEffect(() => {
@@ -29,12 +30,15 @@ export default function Booking() {
   const [slots, setSlots] = useState<string[]>([]);
   const [slot, setSlot] = useState("");
   const [stage, setStage] = useState(0);
+  const [intakeStep, setIntakeStep] = useState(0);
   const [intake, setIntake] = useState({ name: "", email: "", notes: "" });
+  const [answers, setAnswers] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [timezone, setTimezone] = useState("UTC");
+  useEffect(() => { stepHeading.current?.focus(); }, [stage, intakeStep]);
   useEffect(() => {
     if (slug === null) return;
     let live = true;
@@ -156,12 +160,16 @@ export default function Booking() {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     if (f.get("website")) return;
-    setIntake({
-      name: String(f.get("name")),
-      email: String(f.get("email")),
-      notes: String(f.get("notes")),
-    });
-    setStage(2);
+    if (intakeStep === 0) {
+      setIntake({ name: String(f.get("name")).trim(), email: String(f.get("email")).trim(), notes: "" });
+    } else {
+      const question = profile!.intake_questions[intakeStep - 1];
+      const answer = String(f.get("answer-" + question.id) || "").trim();
+      if (question.required && !answer) { setMessage("Add a quick answer before continuing."); return; }
+      setAnswers(previous => ({ ...previous, [question.id]: answer }));
+    }
+    if (intakeStep < (profile?.intake_questions.length || 0)) setIntakeStep(intakeStep + 1);
+    else setStage(1);
     setMessage("");
   }
   async function submit() {
@@ -175,13 +183,13 @@ export default function Booking() {
       const requestKey = service!.id + slot + intake.email + meetingMode;
       if (bookingRequest.current?.key !== requestKey)
         bookingRequest.current = { key: requestKey, id: crypto.randomUUID() };
-      const { data, error } = await db().rpc("create_booking", {
+      const { data, error } = await db().rpc("book_consultation", {
         p_request: bookingRequest.current.id,
         p_service: service!.id,
         p_start: slot,
         p_name: intake.name,
         p_email: intake.email,
-        p_notes: intake.notes,
+        p_answers: answers,
         p_meeting_mode: meetingMode,
       });
       if (error) throw error;
@@ -234,6 +242,7 @@ export default function Booking() {
               <h1>{profile.name}</h1>
               <p className="consultant-headline">{profile.headline}</p>
               <p className="consultant-bio">{profile.bio}</p>
+              {profile.bio && <details className="consultant-bio-mobile"><summary>About your consultant</summary><p>{profile.bio}</p></details>}
               {service && (
                 <div className="selected-service">
                   <h2>{service.title}</h2>
@@ -266,6 +275,7 @@ export default function Booking() {
                     onClick={() => {
                       setConfirmed(false);
                       setStage(0);
+                      setIntakeStep(0);
                       setService(null);
                     }}
                   >
@@ -274,32 +284,39 @@ export default function Booking() {
                 </div>
               ) : (
                 <>
-                  {stage > 0 && (
+                  {(stage > 0 || intakeStep > 0) && (
                     <button
                       className="back-button"
                       onClick={() => {
-                        setStage(stage - 1);
+                        if (stage === 0) setIntakeStep(intakeStep - 1);
+                        else setStage(stage - 1);
                         setMessage("");
                       }}
                     >
                       ← Back
                     </button>
                   )}
-                  <h2>
+                  {stage === 0 && (
+                    <div className="intake-progress">
+                      <span>Getting to know you · {intakeStep + 1} of {profile.intake_questions.length + 1}</span>
+                      <progress aria-label="Questionnaire progress" value={intakeStep + 1} max={profile.intake_questions.length + 1}/>
+                    </div>
+                  )}
+                  <h2 id="intake-step-title" ref={stepHeading} tabIndex={-1}>
                     {stage === 0
-                      ? "What can we help with?"
+                      ? intakeStep === 0 ? "Let’s start with you." : profile.intake_questions[intakeStep - 1]?.label
                       : stage === 1
-                        ? "Tell us what you need."
+                        ? "Choose your consultation."
                         : "Find a time that works."}
                   </h2>
                   <p className="section-subtitle">
                     {stage === 0
-                      ? "Choose a consultation to get started."
+                      ? intakeStep === 0 ? "A few quick answers, then we’ll find a time. No account needed." : "One question at a time. A sentence or two is plenty."
                       : stage === 1
-                        ? "Share a few details to help your consultant prepare."
+                        ? "Nice, your answers are ready. What would you like to book?"
                         : "Choose a date and an available time, then confirm your consultation."}
                   </p>
-                  {stage === 0 ? (
+                  {stage === 1 ? (
                     <div className="service-list">
                       {services.length === 0 ? (
                         <p>
@@ -314,7 +331,7 @@ export default function Booking() {
                             onClick={() => {
                               setService(s);
                               setMeetingMode(s.meeting_modes[0]);
-                              setStage(1);
+                              setStage(2);
                               setDay("");
                               setSlot("");
                             }}
@@ -333,6 +350,27 @@ export default function Booking() {
                     </div>
                   ) : stage === 2 ? (
                     <>
+                        <fieldset className="meeting-options">
+                          <legend>How would you like to meet?</legend>
+                          <div className="meeting-options-grid">
+                            {service?.meeting_modes.map((mode) => (
+                              <label className="meeting-mode-option" key={mode}>
+                                <Input
+                                  type="radio"
+                                  name="meeting_mode"
+                                  value={mode}
+                                  checked={meetingMode === mode}
+                                  onChange={() => setMeetingMode(mode)}
+                                />
+                                <span>
+                                  {mode === "in_person"
+                                    ? "In-person consultation"
+                                    : "Consultation via Zoom"}
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </fieldset>
                       <label>
                         Choose a date{" "}
                         <span className="field-help">
@@ -436,28 +474,8 @@ export default function Booking() {
                   ) : (
                     <>
                       <form onSubmit={continueIntake}>
-                        <fieldset className="meeting-options">
-                          <legend>How would you like to meet?</legend>
-                          <div className="meeting-options-grid">
-                            {service?.meeting_modes.map((mode) => (
-                              <label className="meeting-mode-option" key={mode}>
-                                <Input
-                                  type="radio"
-                                  name="meeting_mode"
-                                  value={mode}
-                                  checked={meetingMode === mode}
-                                  onChange={() => setMeetingMode(mode)}
-                                />
-                                <span>
-                                  {mode === "in_person"
-                                    ? "In-person consultation"
-                                    : "Consultation via Zoom"}
-                                </span>
-                              </label>
-                            ))}
-                          </div>
-                        </fieldset>
-                        <div className="form-row">
+
+                        {intakeStep === 0 && <div className="form-row">
                           <label>
                             Your name
                             <Input
@@ -481,18 +499,17 @@ export default function Booking() {
                               placeholder="you@example.com"
                             />
                           </label>
-                        </div>
-                        <label>
-                          What would you like to discuss?{" "}
-                          <span className="field-help">Optional</span>
-                          <Textarea
-                            name="notes"
-                            defaultValue={intake.notes}
-                            rows={3}
-                            maxLength={2000}
-                            placeholder="A little context helps make the most of our time."
-                          />
-                        </label>
+                        </div>}
+                        {profile.intake_questions.filter((_, i) => i === intakeStep - 1).map(q => (
+                          <label key={q.id}>
+                            Your answer <span className="field-help">{q.required ? "Required" : "Optional"}</span>
+                            {q.type === "short" ? (
+                              <Input aria-labelledby="intake-step-title" name={"answer-" + q.id} value={answers[q.id] || ""} onChange={e=>setAnswers({...answers,[q.id]:e.target.value})} required={q.required} maxLength={1500} />
+                            ) : (
+                              <Textarea aria-labelledby="intake-step-title" name={"answer-" + q.id} value={answers[q.id] || ""} onChange={e=>setAnswers({...answers,[q.id]:e.target.value})} required={q.required} maxLength={1500} rows={4} />
+                            )}
+                          </label>
+                        ))}
                         <label className="honeypot" aria-hidden="true">
                           Website
                           <Input
@@ -502,17 +519,24 @@ export default function Booking() {
                           />
                         </label>
                         <p className="privacy-note">
-                          Your details are shared with {profile.name} to arrange
-                          this consultation. Save the private link shown after
-                          booking to manage your appointment.
+                          Your answers are sent to {profile.name} when you confirm
+                          your booking and included in your confirmation email.
                         </p>
                         <Button
                           type="submit"
                           className="form-submit"
                           disabled={busy}
                         >
-                          Choose a time <span aria-hidden="true">↗</span>
+                          {intakeStep < profile.intake_questions.length ? "Continue" : "Choose a consultation"} <span aria-hidden="true">→</span>
                         </Button>
+                        {intakeStep > 0 && !profile.intake_questions[intakeStep - 1].required && (
+                          <button type="button" className="text-link" onClick={() => {
+                            setAnswers({...answers,[profile.intake_questions[intakeStep - 1].id]:""});
+                            setMessage("");
+                            if(intakeStep < profile.intake_questions.length) setIntakeStep(intakeStep + 1);
+                            else setStage(1);
+                          }}>Skip for now</button>
+                        )}
                       </form>
                     </>
                   )}

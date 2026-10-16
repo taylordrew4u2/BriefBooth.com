@@ -1,3 +1,4 @@
+import { defaultQuestions, type IntakeQuestion } from "./intake";
 import type { Database } from "./database.types";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 export const configured = Boolean(
@@ -25,6 +26,7 @@ export type Profile = {
   meeting_url: string;
   in_person_address: string;
   published: boolean;
+  intake_questions: IntakeQuestion[];
 };
 export type Service = {
   id: string;
@@ -45,6 +47,7 @@ export const demoProfile: Profile = {
   meeting_url: "",
   in_person_address: "",
   published: true,
+  intake_questions: defaultQuestions,
 };
 export const demoServices: Service[] = [
   {

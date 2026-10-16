@@ -8,13 +8,13 @@ The live site is [briefbooth.pages.dev](https://briefbooth.pages.dev). The custo
 
 The existing Vercel team was already on Pro. BriefBooth's Vercel project is paused, preview deployments disabled, and Git builds ignored to prevent this app using that paid hosting. Other projects and the team's subscription were not changed. Do not resume Vercel deployment for this app under the strict free-only requirement.
 
-The Supabase Free database is connected and its schema has been applied and tested. Public consultant email registration/recovery is connected through Brevo Free SMTP. Live signup, confirmation delivery, login, profile creation, sign-out, and password recovery were verified on October 16, 2026. Keep email verification enabled. Google sign-in is optional and disabled until configured. No booking confirmation emails or reminders are sent; clients save their private confirmation link and can download a calendar event.
+The Supabase Free database is connected and its schema has been applied and tested. Public consultant email registration/recovery is connected through Brevo Free SMTP. Live signup, confirmation delivery, login, profile creation, sign-out, and password recovery were verified on October 16, 2026. Keep email verification enabled. Google sign-in is optional and disabled until configured. Booking confirmations are queued for both the client and consultant through the same Brevo Free account. Each includes intake, appointment time/timezone, and only the selected Zoom link or in-person address. Clients can also save their private link and download a calendar event.
 
 ## What works
 
 - Consultant profile, public booking address, private meeting URL, publish/hide controls.
 - Consultation types and weekly availability in the consultant's timezone.
-- Account-free client booking: consultation → intake and meeting format → available time → confirmation.
+- Account-free client booking: consultant’s questionnaire → consultation → meeting format and available time → confirmation.
 - Consultants offer in-person appointments, Zoom, or both. Clients choose during intake; the address or Zoom link appears only after booking.
 - Times are displayed in the client's timezone.
 - Database-enforced overlap prevention, two-hour notice, and a 60-day window.
@@ -85,10 +85,24 @@ Database tests execute PostgreSQL booking logic and verify overlap rejection, in
 
 ## Boundaries
 
-No payment collection, booking emails/reminders, generated video rooms, calendar sync, date-specific schedule overrides, or holiday exceptions. Consultants should only publish hours they can honor. The private management link is a capability: anyone holding it can view basic appointment details and cancel before the start. Keep it private.
+No payment collection, reminders, generated video rooms, calendar sync, date-specific schedule overrides, or holiday exceptions. Consultants should only publish hours they can honor. The private management link is a capability: anyone holding it can view basic appointment details and cancel before the start. Keep it private.
 
 Basic abuse controls include validation, a form honeypot, and five bookings per email per consultant per hour. A larger public launch should add stronger bot protection. Free services' quotas remain in effect; do not enable automatic paid upgrades.
 
 ## Design
 
 The exact brand palette is `#137FEC`, `#B4B4B4`, `#676767`, and `#333333`, with white surfaces and derived neutral/blue tints. The design focuses on consultation booking. The rejected outdoorsy direction is not used.
+
+## Booking confirmation emails
+
+After `supabase/schema.sql` in a new project, apply `supabase/migrations/20261016160059_booking_confirmation_emails.sql`, `supabase/booking-email-worker.sql`, and `supabase/migrations/20261016162000_custom_intake.sql`. The connected project already has these updates. Store the Brevo REST API key as `briefbooth_brevo_api_key` in Supabase Vault; never place it in browser configuration or source control. The existing verified sender is `no-reply@briefbooth.com`.
+
+An insert trigger queues two private snapshots atomically with each booking. A private cron job runs every minute and submits up to three messages through Brevo. Retrying a booking does not enqueue another pair. Provider idempotency keys provide additional protection. Cancelled/past bookings are skipped before sending. Rate limits wait without a paid fallback; authentication failures wait for credential repair. Unknown network/server outcomes are marked `uncertain` for provider-log review instead of blindly resending. `accepted` means Brevo accepted the email, not a delivery guarantee. Delivery records are retained for 30 days; all booking data remains subject to existing account retention.
+
+Brevo Free's 300-email daily allowance is shared with signup/recovery and other use of this existing account. At limits, delivery may be delayed; never enable automatic upgrades or purchase credits. API-key expiry must be maintained in Brevo/Vault. Inspect `briefbooth_private.booking_emails` and `cron.job_run_details` using administrator access when diagnosing failures; neither is available through public booking RPCs.
+
+## Shareable intake questionnaire
+
+Each consultant has `/book/YOUR_SLUG`, suitable for a website button or a direct message. In Studio → Questionnaire, create up to 10 short/long text questions, mark required answers, and reorder or remove questions. Name and email are always requested. Save the questionnaire and publish the profile. Clients answer one question at a time with a progress bar, Back controls, and a Skip option for optional questions, then choose a consultation, meeting format, and available time. No client account is required.
+
+Answers are submitted when the booking is confirmed, saved with question labels in the private booking record, and included in both confirmation emails. Unfinished questionnaires are not saved as leads. The server validates required answers and rejects outdated question IDs; the legacy booking endpoint is no longer public.

@@ -1635,3 +1635,22 @@ textarea {
 @media(max-width:740px){.hero-actions{flex-direction:column;align-items:flex-start;gap:8px}.hero-actions .button{font-size:19px;padding-inline:16px}.time-option.active{color:var(--brand-black-grey)}}
 
 .meeting-options{border:0;padding:0;margin:0 0 24px}.meeting-options legend{font-size:14px;font-weight:600;margin-bottom:10px}.meeting-options-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.meeting-mode-option{display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:10px;padding:14px;margin:0;cursor:pointer}.meeting-mode-option:has(input:checked){background:var(--accent);border-color:var(--brand-blue)}.meeting-mode-option input{width:18px!important;height:18px!important;min-height:18px!important;padding:0!important;flex:none;accent-color:var(--brand-blue)}.meeting-mode-option span{font-size:14px;line-height:1.4}
+
+.intake-progress { display: grid; gap: 10px; margin-bottom: 24px; color: #676767; font-size: .85rem; }
+.intake-progress progress { width: 100%; height: 6px; border: 0; border-radius: 99px; overflow: hidden; background: #edf3fa; accent-color: #137fec; }
+.intake-progress progress::-webkit-progress-bar { background: #edf3fa; border-radius: 99px; }
+.intake-progress progress::-webkit-progress-value { background: #137fec; border-radius: 99px; transition: width .2s ease; }
+.intake-progress progress::-moz-progress-bar { background: #137fec; border-radius: 99px; }
+
+.consultant-bio-mobile { display: none; }
+@media (max-width: 700px) {
+  .booking-main input, .booking-main textarea, .booking-main select { font-size: 16px; }
+  .consultant-panel { padding: 20px 24px; }
+  .consultant-panel .avatar.large { float: left; width: 44px; height: 44px; margin-right: 12px; font-size: 16px; }
+  .consultant-panel h1 { margin-top: 0; font-size: 21px; }
+  .consultant-panel .consultant-headline { margin-top: 4px; }
+  .consultant-panel > .consultant-bio { display: none; }
+  .consultant-bio-mobile { display: block; clear: both; margin-top: 16px; color: #676767; font-size: 14px; }
+  .consultant-bio-mobile summary { cursor: pointer; }
+  .consultant-bio-mobile p { margin-top: 10px; }
+}

@@ -106,8 +106,9 @@ export default function Manage() {
             {booking.status === "confirmed" && (
               <>
                 <p>
-                  Save this private link. It’s how you access and manage your
-                  booking. No confirmation email is sent.
+                  Confirmation emails are queued for you and your consultant.
+                  Save this private link to view or cancel your booking, and
+                  check your spam folder if the email hasn’t arrived.
                 </p>
                 <p>
                   <strong>

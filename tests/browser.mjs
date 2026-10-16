@@ -19,23 +19,20 @@ try {
     await page.getByText("Do my clients need an account?").click();
     await page
       .getByText(
-        "No. They select a consultation, complete a short intake, and choose an available time.",
+        "No. They complete your questionnaire, select a consultation, and choose an available time.",
       )
       .waitFor();
   }
   await page.setViewportSize({ width: 390, height: 1000 });
   await page.goto(base + "/book/demo");
-  await page.getByRole("button", { name: /Discovery call/ }).click();
-  await page
-    .getByLabel("How would you like to meet?")
-    .selectOption("in_person");
   await page.getByLabel("Your name").fill("Test Client");
   await page.getByLabel("Email address").fill("client@example.com");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page
     .getByLabel(/What would you like to discuss/)
     .fill("Help defining my next steps.");
   const actionStyle = await page
-    .getByRole("button", { name: "Choose a time" })
+    .getByRole("button", { name: "Choose a consultation" })
     .evaluate((button) => {
       const style = getComputedStyle(button);
       return { background: style.backgroundColor, color: style.color };
@@ -50,7 +47,9 @@ try {
     actionStyle.color,
     "Booking action label must remain visible",
   );
-  await page.getByRole("button", { name: "Choose a time" }).click();
+  await page.getByRole("button", { name: "Choose a consultation" }).click();
+  await page.getByRole("button", { name: /Discovery call/ }).click();
+  await page.getByRole("radio", {name: "In-person consultation"}).check();
   const dates = page.getByLabel(/Choose a date/);
   await dates.selectOption(
     await dates.locator("option").nth(2).getAttribute("value"),
@@ -61,9 +60,11 @@ try {
     .getByRole("heading", { name: "That’s how easy booking feels." })
     .waitFor();
   await page.getByRole("button", { name: "Try again" }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page.getByRole("button", { name: "Choose a consultation" }).click();
   await page.getByRole("button", { name: /Strategy session/ }).click();
   await page.getByRole("button", { name: "Back", exact: false }).click();
-  await page.getByRole("heading", { name: "What can we help with?" }).waitFor();
+  await page.getByRole("heading", { name: "Choose your consultation." }).waitFor();
   await page.goto(base + "/account?mode=signup");
   await page.getByRole("heading", { name: "Create your account" }).waitFor();
   await page

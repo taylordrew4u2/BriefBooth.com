@@ -165,7 +165,7 @@ export default function Home() {
           <details>
             <summary>Do my clients need an account?</summary>
             <p>
-              No. They select a consultation, complete a short intake, and
+              No. They complete your questionnaire, select a consultation, and
               choose an available time.
             </p>
           </details>

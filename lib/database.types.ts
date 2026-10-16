@@ -1,3 +1,4 @@
+import type { IntakeQuestion } from "./intake";
 // Schema contract; regenerate with Supabase CLI after changing the migration.
 type ProfileRow = {
   id: string;
@@ -7,6 +8,7 @@ type ProfileRow = {
   bio: string;
   timezone: string;
   published: boolean;
+  intake_questions: IntakeQuestion[];
 };
 type ServiceRow = {
   id: string;
@@ -65,14 +67,14 @@ export type Database = {
         Args: { p_service: string; p_day: string };
         Returns: { starts_at: string }[];
       };
-      create_booking: {
+      book_consultation: {
         Args: {
           p_service: string;
           p_start: string;
           p_name: string;
           p_email: string;
-          p_notes: string;
-          p_request?: string;
+          p_answers: Record<string, string>;
+          p_request: string;
           p_meeting_mode?: string;
         };
         Returns: string;

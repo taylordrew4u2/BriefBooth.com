@@ -1,4 +1,5 @@
 "use client";
+import { defaultQuestions } from "@/lib/intake";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -106,6 +107,7 @@ export default function Studio() {
                 meeting_url: "",
                 in_person_address: "",
                 published: false,
+                intake_questions: defaultQuestions,
               },
         );
         setServices(s.data || []);
@@ -235,7 +237,7 @@ export default function Studio() {
           )}
         </div>
         <nav className="studio-tabs" aria-label="Manage booking page">
-          {["profile", "consultations", "availability", "bookings"].map((t) => (
+          {["profile", "questionnaire", "consultations", "availability", "bookings"].map((t) => (
             <button
               key={t}
               onClick={() => {
@@ -375,14 +377,14 @@ export default function Studio() {
                 </form>
                 {profile.slug && (
                   <div className="share-link">
-                    <span>Your link: /book/{profile.slug}</span>
+                    <span>Your intake link: /book/{profile.slug}</span>
                     <button
                       onClick={async () => {
                         try {
                           await navigator.clipboard.writeText(
                             location.origin + "/book/" + profile.slug,
                           );
-                          setMessage("Booking link copied.");
+                          setMessage("Intake link copied. Add it to your website or send it to a client.");
                         } catch {
                           setMessage(
                             "Your booking link is " +
@@ -397,6 +399,47 @@ export default function Studio() {
                     </button>
                   </div>
                 )}
+              </>
+            ) : tab === "questionnaire" ? (
+              <>
+                <div className="panel-heading">
+                  <h2>Your pre-consultation questionnaire</h2>
+                  <p>Clients answer these questions first when they open your link. Their answers appear with the booking and in your confirmation email.</p>
+                </div>
+                <form onSubmit={async (e) => {
+                  e.preventDefault(); setBusy(true); setMessage("");
+                  try {
+                    const { data, error } = await db().from("profiles").update({ intake_questions: profile.intake_questions }).eq("id",uid).select("id").single();
+                    if(error || !data) throw new Error(error?.message || "Save your profile first.");
+                    setMessage("Questionnaire saved. Your intake link is ready to share.");
+                  } catch(e) { setMessage(e instanceof Error ? e.message : "Unable to save questionnaire."); }
+                  finally { setBusy(false); }
+                }}>
+                  <p className="field-help">Name and email are always included. Add up to 10 questions.</p>
+                  {profile.intake_questions.map((q,i) => (
+                    <fieldset className="inset-form" key={q.id}>
+                      <legend>Question {i+1}</legend>
+                      <label>Question text
+                        <Input required maxLength={200} value={q.label} onChange={e=>setProfile({...profile,intake_questions:profile.intake_questions.map(x=>x.id===q.id?{...x,label:e.target.value}:x)})}/>
+                      </label>
+                      <label>Answer format
+                        <select value={q.type} onChange={e=>setProfile({...profile,intake_questions:profile.intake_questions.map(x=>x.id===q.id?{...x,type:e.target.value as "short"|"long"}:x)})}>
+                          <option value="short">Short answer</option><option value="long">Long answer</option>
+                        </select>
+                      </label>
+                      <label className="checkbox-label"><Input type="checkbox" checked={q.required} onChange={e=>setProfile({...profile,intake_questions:profile.intake_questions.map(x=>x.id===q.id?{...x,required:e.target.checked}:x)})}/>Required answer</label>
+                      <div className="form-row">
+                        <Button type="button" variant="outline" disabled={i===0} onClick={()=>{const questions=[...profile.intake_questions];[questions[i-1],questions[i]]=[questions[i],questions[i-1]];setProfile({...profile,intake_questions:questions});}}>Move up</Button>
+                        <Button type="button" variant="outline" onClick={()=>setProfile({...profile,intake_questions:profile.intake_questions.filter(x=>x.id!==q.id)})}>Remove question</Button>
+                      </div>
+                    </fieldset>
+                  ))}
+                  <div className="form-row">
+                    <Button type="button" variant="outline" disabled={profile.intake_questions.length>=10} onClick={()=>setProfile({...profile,intake_questions:[...profile.intake_questions,{id:crypto.randomUUID(),label:"",type:"long",required:false}]})}>Add question</Button>
+                    <Button type="submit" disabled={busy}>{busy?"Saving…":"Save questionnaire"}</Button>
+                  </div>
+                </form>
+                <p className="field-help">Share /book/{profile.slug || "your-name"} in a message or use it as the destination of a “Book a consultation” button on your website.</p>
               </>
             ) : tab === "consultations" ? (
               <>
@@ -630,7 +673,7 @@ export default function Studio() {
                           {b.notes && (
                             <details>
                               <summary>Client intake</summary>
-                              <p>{b.notes}</p>
+                              <p style={{ whiteSpace: "pre-wrap" }}>{b.notes}</p>
                             </details>
                           )}
                         </div>
