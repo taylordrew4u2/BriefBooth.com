@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build && node scripts/prepare-pages.mjs",
     "start": "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false wrangler pages dev out --port 3000",
-    "lint": "eslint app lib/supabase.ts lib/calendar.ts lib/database.types.ts components/site-header.tsx components/booking-client.tsx components/manage-client.tsx",
+    "lint": "eslint app lib/supabase.ts lib/calendar.ts lib/database.types.ts components/site-header.tsx components/booking-client.tsx components/manage-client.tsx components/intake-template-picker.tsx lib/intake.ts",
     "test": "node tests/database.mjs",
     "test:browser": "node tests/browser.mjs",
     "test:pages": "node tests/pages.mjs"

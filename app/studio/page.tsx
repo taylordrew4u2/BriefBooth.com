@@ -1,4 +1,5 @@
 "use client";
+import { IntakeTemplatePicker } from "@/components/intake-template-picker";
 import { defaultQuestions } from "@/lib/intake";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -406,6 +407,7 @@ export default function Studio() {
                   <h2>Your pre-consultation questionnaire</h2>
                   <p>Clients answer these questions first when they open your link. Their answers appear with the booking and in your confirmation email.</p>
                 </div>
+                <IntakeTemplatePicker questions={profile.intake_questions} onChange={questions => setProfile({ ...profile, intake_questions: questions })} />
                 <form onSubmit={async (e) => {
                   e.preventDefault(); setBusy(true); setMessage("");
                   try {
