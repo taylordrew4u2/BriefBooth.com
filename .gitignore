@@ -48,3 +48,6 @@ next-env.d.ts
 .wrangler/
 
 /supabase/.temp/
+
+# Deno-managed function dependencies
+/supabase/functions/node_modules/

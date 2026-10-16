@@ -1,6 +1,6 @@
 # Optional consultation payments
 
-Status: implemented for sandbox testing, not enabled for real payments. The public Cloudflare frontend still runs the earlier free-booking release. Do not treat database/unit checks as proof of a completed Stripe checkout.
+Status: live activation authorized for Clean Portal Studio; live Connect Platform Agreement accepted. Stripe requires an identity document for the account owner and final platform review before creating live connected accounts. Live server credentials are still pending. Not yet enabled for real payments. The public Cloudflare frontend still runs the earlier free-booking release. Do not treat database/unit checks as proof of a completed Stripe checkout.
 
 Consultants can set a free consultation or a USD amount of at least $0.50. The client sees an inclusive total with the consultation amount and estimated processing shown separately. Examples: $5 + $0.46 = $5.46; $500 + $15.24 = $515.24. Estimates use standard US domestic-card pricing of 2.9% + $0.30, rounded to cents. Actual fees vary; the amount received is not guaranteed.
 
@@ -20,8 +20,8 @@ The server snapshots the price and reserves the time before creating Checkout. S
 
 - Local build, lint, database/payment tests and deployed handler authentication/signature checks pass.
 - The sandbox Connect agreement is accepted, and the application's hosted consultant-onboarding link works.
-- Test consultant activation is waiting at Stripe's password creation screen; the user must complete that browser credential step.
-- Still required: sandbox successful/declined/canceled Checkout, actual webhook and confirmation delivery tests; live Connect configuration and credentials; production frontend publication.
+- The user chose to stop sandbox onboarding and explicitly authorized live activation. Do not resume the sandbox flow.
+- Still required: live Connect configuration and credentials, live webhook configuration, and production frontend publication. End-to-end Stripe payment testing was declined by the user and has not been completed; do not claim otherwise.
 - Never switch the sandbox account mapping to live. Live mode requires a new live consultant account mapping and a separate live webhook/key. Retire the disposable sandbox fixture after verification.
 
 Cloudflare, Supabase, and Brevo remain on their existing free setup. Free quotas still apply; no automatic paid fallback is configured.

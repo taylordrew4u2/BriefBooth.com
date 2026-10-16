@@ -1,6 +1,6 @@
 import { money, priceBreakdown } from "@/lib/pricing";
-export function PriceBreakdown({ amount }: { amount: number }) {
-  const price = priceBreakdown(amount);
+export function PriceBreakdown({ amount, total }: { amount: number; total?: number }) {
+  const price = total === undefined ? priceBreakdown(amount) : { service: amount, processing: total - amount, total };
   return <div className="price-breakdown" aria-label="Price breakdown">
     <dl><div><dt>Consultation</dt><dd>{money(price.service)}</dd></div>
       {amount > 0 && <div><dt>Estimated processing cost, included</dt><dd>{money(price.processing)}</dd></div>}

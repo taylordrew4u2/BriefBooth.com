@@ -110,7 +110,7 @@ export default function Manage() {
               </span>
               <small>{Intl.DateTimeFormat().resolvedOptions().timeZone}</small>
             </div>
-            {payment && <PriceBreakdown amount={payment.amount} />}
+            {payment && <PriceBreakdown amount={payment.amount} total={payment.total} />}
             {["pending_payment","payment_processing"].includes(booking.status) && <div className="inset-form">
               <p>Your consultation is confirmed only after payment succeeds. Confirmation emails will follow.</p>
               {payment?.url && <a className="button" href={payment.url}>Return to secure checkout ↗</a>}
