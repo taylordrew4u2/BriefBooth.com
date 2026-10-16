@@ -8,7 +8,7 @@ The live site is [briefbooth.pages.dev](https://briefbooth.pages.dev). The custo
 
 The existing Vercel team was already on Pro. BriefBooth's Vercel project is paused, preview deployments disabled, and Git builds ignored to prevent this app using that paid hosting. Other projects and the team's subscription were not changed. Do not resume Vercel deployment for this app under the strict free-only requirement.
 
-The Supabase Free database is connected and its schema has been applied and tested. Public consultant email registration/recovery still needs a configured email provider: Supabase's default sender restricts delivery to authorized team addresses. Keep email verification enabled. Google sign-in is optional and disabled until configured. No booking confirmation emails or reminders are sent; clients save their private confirmation link and can download a calendar event.
+The Supabase Free database is connected and its schema has been applied and tested. Public consultant email registration/recovery is connected through Brevo Free SMTP. Live signup, confirmation delivery, login, profile creation, sign-out, and password recovery were verified on October 16, 2026. Keep email verification enabled. Google sign-in is optional and disabled until configured. No booking confirmation emails or reminders are sent; clients save their private confirmation link and can download a calendar event.
 
 ## What works
 
