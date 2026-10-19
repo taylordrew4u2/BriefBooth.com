@@ -42,7 +42,7 @@ export default function Studio() {
   const router = useRouter();
   const [uid, setUid] = useState("");
   const [siteOrigin, setSiteOrigin] = useState("");
-  const [tab, setTab] = useState("profile");
+  const [tab, setTab] = useState("overview");
   const [profile, setProfile] = useState<Profile | null>(null);
   const [savedProfile, setSavedProfile] = useState<{slug: string; published: boolean} | null>(null);
   const [savedHours, setSavedHours] = useState(false);
@@ -60,6 +60,10 @@ export default function Studio() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [adding, setAdding] = useState(false);
+  const [bookingFilter, setBookingFilter] = useState("upcoming");
+  const [search, setSearch] = useState("");
+  const [now, setNow] = useState(() => Date.now());
+  const [refreshing, setRefreshing] = useState(false);
   useEffect(() => {
     if (!configured) {
       router.replace("/account");
@@ -227,6 +231,27 @@ export default function Studio() {
   function updateHour(i: number, patch: Partial<Hours>) {
     setHours(hours.map((h, n) => (n === i ? { ...h, ...patch } : h)));
   }
+  const pending = bookings.filter(b => b.status === "pending_approval" && new Date(b.ends_at).getTime() > now);
+  const upcoming = bookings.filter(b => b.status === "confirmed" && new Date(b.ends_at).getTime() > now);
+  const nextBooking = [...upcoming].sort((a,b) => Date.parse(a.starts_at) - Date.parse(b.starts_at))[0];
+  const visibleBookings = bookings.filter(b => {
+    const future = Date.parse(b.ends_at) > now;
+    const matches = bookingFilter === "all" ||
+      (bookingFilter === "requests" && future && b.status === "pending_approval") ||
+      (bookingFilter === "upcoming" && future && ["confirmed", "pending_approval"].includes(b.status)) ||
+      (bookingFilter === "history" && (!future || !["confirmed", "pending_approval"].includes(b.status)));
+    const title = services.find(service => service.id === b.service_id)?.title || "";
+    return matches && `${b.client_name} ${b.client_email} ${title}`.toLowerCase().includes(search.trim().toLowerCase());
+  }).sort((a,b) => bookingFilter === "history" ? Date.parse(b.starts_at)-Date.parse(a.starts_at) : Date.parse(a.starts_at)-Date.parse(b.starts_at));
+  async function refreshBookings() {
+    setRefreshing(true);
+    try {
+      const {data,error} = await db().from("bookings").select("*").eq("owner_id",uid).order("starts_at");
+      if(error) throw error;
+      setBookings(data || []); setNow(Date.now()); setMessage("Bookings are up to date.");
+    } catch { setMessage("Couldn’t refresh bookings. Please try again."); }
+    finally { setRefreshing(false); }
+  }
   return (
     <>
       <header className="studio-header">
@@ -247,12 +272,45 @@ export default function Studio() {
         <div className="studio-title">
           <div>
             <span className="studio-eyebrow">YOUR CONSULTANT WORKSPACE</span>
-            <h1>Your booking studio.</h1>
+            <h1>{profile?.name ? `${profile.name}’s studio` : "Your booking studio"}</h1>
             <p>A little organization. More time for your clients.</p>
           </div>
 
         </div>
-        {!loading && profile && (
+        <div className="studio-workspace">
+        <nav className="studio-tabs" aria-label="Manage booking page">
+          {["overview", "bookings", "profile", "questionnaire", "consultations", "availability"].map((t) => (
+            <button
+              key={t}
+              onClick={() => {
+                setTab(t);
+                setMessage("");
+              }}
+              aria-current={tab === t ? "page" : undefined}
+              className={tab === t ? "active" : ""}
+            >
+              {{overview: "Overview", bookings: "Bookings", profile: "Profile & Zoom", questionnaire: "Intake questions", consultations: "Meeting types", availability: "Availability"}[t]}
+            </button>
+          ))}
+        </nav>
+        <div className="studio-content">
+        {!loading && profile && tab === "overview" && (
+          <section className="studio-overview" aria-label="Studio overview">
+            <div className="studio-metrics">
+              <button onClick={() => {setTab("bookings"); setBookingFilter("requests");}}><span>Needs your approval</span><strong>{pending.length}</strong><small>Review requests →</small></button>
+              <button onClick={() => {setTab("bookings"); setBookingFilter("upcoming");}}><span>Upcoming meetings</span><strong>{upcoming.length}</strong><small>View your schedule →</small></button>
+              <button onClick={() => setTab("profile")}><span>Booking page</span><strong className="metric-word">{savedProfile?.published ? "Published" : "Draft"}</strong><small>Edit profile & settings →</small></button>
+            </div>
+            <div className="studio-next">
+              <span className="studio-eyebrow">NEXT CONFIRMED MEETING</span>
+              <h2>{nextBooking ? nextBooking.client_name : "Your next conversation starts here."}</h2>
+              <p>{nextBooking ? new Date(nextBooking.starts_at).toLocaleString(undefined,{dateStyle:"full",timeStyle:"short"}) : "Share your intake link. Clients answer your questions, then choose a time."}</p>
+              {nextBooking && <a className="text-link" href={"/manage/"+nextBooking.manage_token}>View meeting details →</a>}
+              {pending.length > 0 && <button className="text-link" onClick={() => {setTab("bookings");setBookingFilter("requests");}}>{pending.length} request{pending.length === 1 ? "" : "s"} waiting for your review →</button>}
+            </div>
+          </section>
+        )}
+        {!loading && profile && tab === "overview" && (
           <section className="booking-link-card" aria-labelledby="booking-link-title">
             <h2 id="booking-link-title">Your intake & booking link</h2>
             <p>Share this on your website or send it to a client. They answer your questions first, then choose a consultation and time.</p>
@@ -283,7 +341,7 @@ export default function Studio() {
             )}
           </section>
         )}
-        {!loading && profile && (!savedProfile?.published || !services.some(s => s.active) || !savedHours) && (
+        {!loading && profile && tab === "overview" && (!savedProfile?.published || !services.some(s => s.active) || !savedHours) && (
           <section className="notice" aria-label="Booking page setup">
             <strong>Get your page ready to share</strong>
             <p>Save your profile, add a consultation, and save your weekly hours. Customize your questionnaire whenever you like.</p>
@@ -295,21 +353,6 @@ export default function Studio() {
             </div>
           </section>
         )}
-        <nav className="studio-tabs" aria-label="Manage booking page">
-          {["profile", "questionnaire", "consultations", "availability", "bookings"].map((t) => (
-            <button
-              key={t}
-              onClick={() => {
-                setTab(t);
-                setMessage("");
-              }}
-              aria-current={tab === t ? "page" : undefined}
-              className={tab === t ? "active" : ""}
-            >
-              {t[0].toUpperCase() + t.slice(1)}
-            </button>
-          ))}
-        </nav>
         {message && (
           <div className="notice" role="status">
             {message}
@@ -322,7 +365,7 @@ export default function Studio() {
             We couldn’t load your account. Please check your connection and
             reload.
           </p>
-        ) : (
+        ) : tab !== "overview" ? (
           <section className="studio-panel">
             {tab === "profile" ? (
               <>
@@ -690,23 +733,29 @@ export default function Studio() {
             ) : (
               <>
                 <div className="panel-heading">
-                  <h2>Your consultations, on the calendar.</h2>
+                  <h2>Your bookings</h2>
                   <p>
                     Times are shown in your browser’s timezone. Cancelled
                     appointments stay here for reference.
                   </p>
                 </div>
-                {bookings.length === 0 ? (
+                <div className="booking-toolbar">
+                  <label>Find a booking<Input type="search" placeholder="Client name, email, or meeting type" value={search} onChange={event => setSearch(event.target.value)} /></label>
+                  <Button variant="outline" disabled={refreshing} onClick={refreshBookings}>{refreshing ? "Refreshing…" : "Refresh"}</Button>
+                </div>
+                <div className="booking-filters" role="group" aria-label="Filter bookings">
+                  {[["requests", `Needs approval (${pending.length})`],["upcoming","Upcoming"],["history","History"],["all","All bookings"]].map(([value,label]) => <button key={value} aria-pressed={bookingFilter === value} onClick={() => setBookingFilter(value)}>{label}</button>)}
+                </div>
+                {visibleBookings.length === 0 ? (
                   <div className="empty-state">
-                    <h3>Room for your next conversation.</h3>
+                    <h3>No bookings in this view.</h3>
                     <p>
-                      Publish your page and share your booking link to get
-                      started.
+                      Try another filter or share your intake link from Overview.
                     </p>
                   </div>
                 ) : (
                   <div className="booking-records">
-                    {bookings.map((b) => (
+                    {visibleBookings.map((b) => (
                       <article className="booking-record" key={b.id}>
                         <div>
                           <span className={"booking-status " + b.status}>
@@ -740,9 +789,15 @@ export default function Studio() {
                             </details>
                           )}
                         </div>
-                        {b.status==="pending_approval" && <div className="manage-actions">{[true,false].map(approve=><Button key={String(approve)} type="button" disabled={busy} onClick={async()=>{
-                          setBusy(true);const {data,error}=await db().rpc("review_booking",{p_booking:b.id,p_approve:approve});setBusy(false);
-                          if(error)setMessage(error.message);else{setBookings(items=>items.map(item=>item.id===b.id?{...item,status:data}:item));setMessage(approve?"Request approved. Meeting details will be emailed to you and your client.":"Request declined. The client will be notified.");}
+                        {b.status==="pending_approval" && <div className="manage-actions">{[true,false].map(approve=><Button variant={approve ? "default" : "outline"} key={String(approve)} type="button" disabled={busy} onClick={async()=>{
+                          setBusy(true);
+                          try {
+                            const {data,error}=await db().rpc("review_booking",{p_booking:b.id,p_approve:approve});
+                            if(error) throw error;
+                            setBookings(items=>items.map(item=>item.id===b.id?{...item,status:data}:item));
+                            setMessage(approve?"Request approved. Meeting details will be emailed to you and your client.":"Request declined. The client will be notified.");
+                          } catch { setMessage("Couldn’t update this request. Refresh bookings and try again."); }
+                          finally { setBusy(false); }
                         }}>{approve?"Approve request":"Decline request"}</Button>)}</div>}
                         <a href={"/manage/" + b.manage_token}>
                           Manage booking ↗
@@ -754,7 +809,9 @@ export default function Studio() {
               </>
             )}
           </section>
-        )}
+        ) : null}
+        </div>
+        </div>
       </main>
     </>
   );
