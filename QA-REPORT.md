@@ -50,3 +50,11 @@ Created a fresh QA consultant through the public signup API; verification was re
 A second in-person booking through the public booking API verified the address email path. Read all four newly delivered Gmail inbox messages (client + consultant for Zoom and in person): correct intake, time, timezone, matching meeting details, and no cross-mode location leakage. The regular worker delivered three messages in one minute and the fourth in the next scheduled batch. Checked occupied-slot removal, duplicate rejection, idempotent retries, and anonymous booking privacy. UI cancellation succeeded and its exact time reopened.
 
 Fixed misleading consultation empty-state guidance: a saved profile now prompts adding a consultation instead of telling the consultant to save the profile again. Lint/build, database/payment-paused checks, and live Pages checks passed. Both QA appointments were cancelled; the QA profile is unpublished and its service inactive. No real customer data was changed, no charge was made, and no paid service or plan was enabled.
+
+
+## Automatic Zoom links — October 19, 2026
+- Deployed encrypted per-consultant OAuth connection, single-use expiring states, meeting creation worker, and admin connection button.
+- 4u Digital authorized the development Zoom app. Other consultants remain gated until Zoom approves distribution.
+- A clearly labeled production verification booking created Zoom meeting 72171581232. Both consultant and client-alias emails arrived in Gmail with that unique meeting ID and intake details. The BriefBooth verification booking was cancelled afterward; Zoom meetings currently require manual removal after cancellation (create-only scope).
+- Database tests cover email gating, two-recipient delivery snapshot, replay safety, private credentials, state consumption, and configuration key parsing. Existing tests, lint and production build passed.
+- Weekly availability for 4u Digital is still unset; real booking cannot start until the owner supplies hours.

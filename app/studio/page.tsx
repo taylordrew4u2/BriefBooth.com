@@ -1,4 +1,5 @@
 "use client";
+import { ZoomConnection } from "@/components/zoom-connection";
 import { IntakeTemplatePicker } from "@/components/intake-template-picker";
 import { defaultQuestions } from "@/lib/intake";
 import { useEffect, useState } from "react";
@@ -383,8 +384,9 @@ export default function Studio() {
                       }
                     />
                   </label>
+                  <ZoomConnection />
                   <label>
-                    Zoom meeting link{" "}
+                    Backup Zoom meeting link{" "}
                     <span className="field-help">
                       Optional · shared only after booking
                     </span>

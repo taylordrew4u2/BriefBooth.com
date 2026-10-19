@@ -66,6 +66,8 @@ export type Database = {
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
     Functions: {
+      zoom_status: { Args: Record<string, never>; Returns: { connected: boolean } };
+      zoom_begin: { Args: Record<string, never>; Returns: string };
       available_slots: {
         Args: { p_service: string; p_day: string };
         Returns: { starts_at: string }[];

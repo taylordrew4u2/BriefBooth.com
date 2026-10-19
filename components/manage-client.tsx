@@ -47,6 +47,8 @@ export default function Manage() {
       }
     }
     load();
+    const timer=setInterval(load, 10000);
+    return ()=>clearInterval(timer);
   }, [token]);
   async function cancel() {
     setBusy(true);
@@ -133,7 +135,7 @@ export default function Manage() {
                     Join Zoom consultation ↗
                   </a>
                 ) : (
-                  <p>Your consultant will arrange meeting details with you.</p>
+                  <p>Your meeting link is being prepared. This page updates automatically. Your confirmation email will include the link once it is ready.</p>
                 )}
                 <div className="manage-actions">
                   <Button
