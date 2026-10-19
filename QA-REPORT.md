@@ -32,3 +32,7 @@ Checked responsive browser viewports at 320px and 390px: homepage, sign-in, cons
 Fixed narrow-screen intake overflow, stacked Zoom/in-person choices, increased tap targets, and used 16px form text to prevent phone input zoom. Restored mobile Sign in, wrapped studio tabs so every section stays visible, and shortened the final intake button to “Choose consultation.” Preserved the existing colors and simple question-by-question flow.
 
 Lint, production build, static-route/security-header checks, and diff whitespace checks passed. These are responsive browser checks, not physical iOS/Android device tests. No service plans, billing settings, or backend/payment behavior changed.
+
+## Booking-link discovery and developer template
+
+Moved sharing out of the bottom of Profile into a persistent admin panel: full selectable URL, Copy booking link, client preview, and explicit setup instructions for unpublished profiles. Links use the saved published slug, so unsaved edits do not create invalid links. Verified clipboard output and visibility across admin tabs with the existing QA account. Added the App, web & full-stack development template with four questions (only the first required); verified applying and undoing its draft without changing saved account data. Lint, production build, static-route checks and whitespace checks passed.

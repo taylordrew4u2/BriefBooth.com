@@ -35,6 +35,10 @@ export const intakeTemplates: IntakeTemplate[] = [
     questions: [question("What problem would you like technology to help solve?", true), question("What tools or systems are you using today?"), question("Who will use the solution, and what do they need to do?"), question("When would you ideally like to get started?", false, "short")],
   },
   {
+    id: "software-development", name: "App, web & full-stack development", description: "Plan a new build, improve an existing app, or get help with a bug. No technical expertise needed.",
+    questions: [question("What would you like to build, improve, or fix?", true), question("Who will use it, and what is the main thing they should be able to do?"), question("Do you have an existing website, app, designs, or a tech stack? Share any useful context or public links—no passwords or API keys."), question("Do you have a target launch date or budget range in mind?", false, "short")],
+  },
+  {
     id: "design", name: "Design & branding", description: "Explore the brand, audience, and creative direction.",
     questions: [question("What are you creating or refreshing?", true), question("Who is it for, and how should it make them feel?"), question("Are there any styles or examples you like?"), question("Is there a launch date or milestone to keep in mind?", false, "short")],
   },

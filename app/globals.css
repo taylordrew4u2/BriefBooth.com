@@ -1715,3 +1715,11 @@ form > *, .form-row > *, .service-option > div, .service-admin > div { min-width
   .studio-shell > .notice .form-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .studio-shell > .notice .text-link { margin: 0; padding: 8px 0; font-size: 13px; text-align: left; }
 }
+
+.booking-link-card { padding: 24px; margin-bottom: 24px; background: #f0f6ff; border: 1px solid #c7dcf7; border-radius: 12px; min-width: 0; }
+.booking-link-card h2 { font-size: 21px; margin: 0 0 8px; }
+.booking-link-card p { margin: 0 0 16px; line-height: 1.6; }
+.booking-link-card label { display: grid; gap: 8px; min-width: 0; }
+.booking-link-card .template-actions { margin-top: 16px; }
+.booking-link-card .field-help { margin: 16px 0 0; }
+@media (max-width: 700px) { .booking-link-card { padding: 20px 16px; } .booking-link-card .template-actions > * { width: 100%; } }

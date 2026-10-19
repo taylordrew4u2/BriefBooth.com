@@ -39,6 +39,7 @@ const dayNames = [
 export default function Studio() {
   const router = useRouter();
   const [uid, setUid] = useState("");
+  const [siteOrigin, setSiteOrigin] = useState("");
   const [tab, setTab] = useState("profile");
   const [profile, setProfile] = useState<Profile | null>(null);
   const [savedProfile, setSavedProfile] = useState<{slug: string; published: boolean} | null>(null);
@@ -71,6 +72,7 @@ export default function Studio() {
           router.replace("/account");
           return;
         }
+        setSiteOrigin(window.location.origin);
         setUid(user.id);
         const results = await Promise.all([
           db().from("profiles").select("*").eq("id", user.id).maybeSingle(),
@@ -253,6 +255,37 @@ export default function Studio() {
             </a>
           )}
         </div>
+        {!loading && profile && (
+          <section className="booking-link-card" aria-labelledby="booking-link-title">
+            <h2 id="booking-link-title">Your intake & booking link</h2>
+            <p>Share this on your website or send it to a client. They answer your questions first, then choose a consultation and time.</p>
+            {savedProfile?.published ? (
+              <>
+                <label>
+                  Your shareable link
+                  <Input readOnly value={siteOrigin + "/book/" + savedProfile.slug} onFocus={event => event.target.select()} />
+                </label>
+                <div className="template-actions">
+                  <Button type="button" onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(siteOrigin + "/book/" + savedProfile.slug);
+                      setMessage("Booking link copied. Paste it into your website or a message to a client.");
+                    } catch {
+                      setMessage("Select and copy the link in the Your shareable link field above.");
+                    }
+                  }}>Copy booking link</Button>
+                  <a className="button secondary" href={"/book/" + savedProfile.slug} target="_blank" rel="noopener noreferrer">Preview client page ↗</a>
+                </div>
+                {(!services.some(service => service.active) || !savedHours) && <p className="field-help">Your link is created. Add a consultation and save your weekly hours before inviting clients to book.</p>}
+              </>
+            ) : (
+              <>
+                <p>To create your link, enter your name and booking page address in Profile, check “Publish my booking page,” then save.</p>
+                <Button type="button" onClick={() => { setTab("profile"); setMessage("Enter your profile details below, check Publish my booking page, and save to create your link."); }}>Set up my booking link</Button>
+              </>
+            )}
+          </section>
+        )}
         {!loading && profile && (!savedProfile?.published || !services.some(s => s.active) || !savedHours) && (
           <section className="notice" aria-label="Booking page setup">
             <strong>Get your page ready to share</strong>
@@ -404,30 +437,7 @@ export default function Studio() {
                     {busy ? "Saving…" : "Save profile"}
                   </Button>
                 </form>
-                {savedProfile?.published && (
-                  <div className="share-link">
-                    <span>Your intake link: /book/{savedProfile.slug}</span>
-                    <button
-                      onClick={async () => {
-                        try {
-                          await navigator.clipboard.writeText(
-                            location.origin + "/book/" + savedProfile.slug,
-                          );
-                          setMessage("Intake link copied. Add it to your website or send it to a client.");
-                        } catch {
-                          setMessage(
-                            "Your booking link is " +
-                              location.origin +
-                              "/book/" +
-                              savedProfile.slug,
-                          );
-                        }
-                      }}
-                    >
-                      Copy link ↗
-                    </button>
-                  </div>
-                )}
+
               </>
             ) : tab === "questionnaire" ? (
               <>
