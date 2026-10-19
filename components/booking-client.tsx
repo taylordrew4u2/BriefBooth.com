@@ -221,7 +221,7 @@ export default function Booking() {
         <Logo />
         <Link href="/">About BriefBooth ↗</Link>
       </header>
-      <main id="main" className="booking-shell">
+      <main id="main" className="booking-shell booking-experience">
         {demo && (
           <div className="demo-banner">
             Interactive demo · Alex is an example consultant. No real
@@ -260,6 +260,11 @@ export default function Booking() {
                   </span>
                 </div>
               )}
+              <div className="conversation-art" aria-hidden="true">
+                <span className="art-bubble">Your next big idea</span>
+                <svg viewBox="0 0 64 64" fill="currentColor"><path d="M6 17 24 10 58 13 58 20 24 17 6 23Z M8 26 24 20 24 60 8 54Z M42 26 56 22 56 58 42 53Z M28 40 38 39 38 45 28 46Z M28 48 41 46 47 48 47 51 28 53Z"/></svg>
+                <span className="art-spark">✦</span><span className="art-caption">starts with a conversation.</span>
+              </div>
               <div className="booking-brand">
                 Scheduling with <strong>BriefBooth</strong>
               </div>
@@ -307,10 +312,14 @@ export default function Booking() {
                   )}
                   {stage === 0 && (
                     <div className="intake-progress">
-                      <span>Getting to know you · {intakeStep + 1} of {profile.intake_questions.length + 1}</span>
+                      <div className="intake-progress-label"><span>{intakeStep === 0 ? "A friendly hello" : intakeStep === profile.intake_questions.length ? "Last question. You’ve got this." : "Your ideas are taking shape"}</span><strong>{intakeStep + 1} / {profile.intake_questions.length + 1}</strong></div>
                       <progress aria-label="Questionnaire progress" value={intakeStep + 1} max={profile.intake_questions.length + 1}/>
                     </div>
                   )}
+                  <div className="question-chapter" aria-hidden="true" key={`${stage}-${intakeStep}`}>
+                    <span className="chapter-symbol">{stage === 0 ? intakeStep === 0 ? "✳" : "✦" : stage === 1 ? "↗" : "◷"}</span>
+                    <span>{stage === 0 ? intakeStep === 0 ? "NICE TO MEET YOU" : `A LITTLE ABOUT YOUR IDEAS · ${String(intakeStep).padStart(2, "0")}` : stage === 1 ? "MAKE IT YOURS" : "LET’S MAKE TIME"}</span>
+                  </div>
                   <h2 id="intake-step-title" ref={stepHeading} tabIndex={-1}>
                     {stage === 0
                       ? intakeStep === 0 ? "Let’s start with you." : profile.intake_questions[intakeStep - 1]?.label
@@ -491,7 +500,7 @@ export default function Booking() {
                     </>
                   ) : (
                     <>
-                      <form onSubmit={continueIntake}>
+                      <form className="intake-answer-card" onSubmit={continueIntake}>
 
                         {intakeStep === 0 && <div className="form-row">
                           <label>
