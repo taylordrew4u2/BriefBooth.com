@@ -1723,3 +1723,44 @@ form > *, .form-row > *, .service-option > div, .service-admin > div { min-width
 .booking-link-card .template-actions { margin-top: 16px; }
 .booking-link-card .field-help { margin: 16px 0 0; }
 @media (max-width: 700px) { .booking-link-card { padding: 20px 16px; } .booking-link-card .template-actions > * { width: 100%; } }
+
+/* Designly polish: clear hierarchy, consistent surfaces, and a guided client journey. */
+.product-preview { transform: none; border-color: #dbe1e8; box-shadow: 0 24px 64px -32px #33333340; }
+.preview-journey { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 28px; font-size: 11px; color: #676767; }
+.preview-journey span:first-child { color: #333333; font-weight: 700; }
+.preview-question h3 { font-size: 23px; line-height: 1.3; margin: 12px 0 8px; letter-spacing: -.5px; }
+.preview-question p { font-size: 13px; color: #676767; }
+.preview-answer { margin: 20px 0 12px; padding: 18px; border: 1px solid #dbe1e8; border-radius: 10px; color: #333333; background: #f8fafc; font-size: 14px; line-height: 1.7; }
+.preview-question { margin-bottom: 24px; }
+.studio-eyebrow { display: block; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: #676767; margin-bottom: 12px; }
+.booking-link-card { background: #f5f9fe; border-color: #d4e3f5; }
+.studio-panel, .auth-card, .manage-card { border-radius: 16px; }
+.studio-tabs { gap: 8px; }
+.studio-tabs button { border-radius: 8px; }
+.studio-tabs button.active { background: #e7f2fe; color: #333333; font-weight: 700; }
+.booking-layout { border-color: #dbe1e8; box-shadow: 0 12px 40px -26px #33333338; }
+.booking-journey { display: flex; gap: 16px; list-style: none; padding: 0; margin: 0 0 28px; }
+.booking-journey li { display: flex; align-items: center; gap: 7px; font-size: 11px; color: #676767; }
+.booking-journey li > span { display: grid; place-items: center; width: 23px; height: 23px; flex-shrink: 0; border-radius: 50%; background: #f0f0f0; color: #676767; }
+.booking-journey li.reached > span { background: #e7f2fe; color: #333333; }
+.booking-journey li[aria-current] { color: #333333; font-weight: 700; }
+.booking-journey li[aria-current] > span { background: #333333; color: white; }
+.service-option { border-radius: 12px; transition: border-color .15s, background .15s; }
+.service-option:hover { background: #f5f9fe; border-color: #137fec; }
+input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid #137fec; outline-offset: 3px; }
+@media (max-width: 700px) {
+  .booking-journey { gap: 10px; justify-content: space-between; margin-bottom: 24px; }
+  .booking-journey li { flex-direction: column; gap: 6px; text-align: center; font-size: 10px; }
+  .preview-question h3 { font-size: 21px; }
+  .studio-title h1 { font-size: 30px; }
+}
+@media (max-width: 700px) {
+  .preview-content { grid-template-columns: minmax(0, 1fr); }
+  .preview-profile { border-right: 0; border-bottom: 1px solid #e0e0e0; padding: 20px; }
+  .preview-profile .avatar { float: left; margin: 0 14px 0 0; }
+  .preview-profile .profile-rule, .preview-profile h3, .preview-profile h3 + p, .preview-meta, .sample-tag { display: none; }
+  .preview-profile h2 { margin-top: 0; }
+  .preview-calendar { padding: 24px 20px; }
+}
+.studio-title { margin-bottom: 24px; }
+.booking-link-card .button.secondary { background: #fff; color: #333333 !important; border: 1px solid #b4b4b4; box-shadow: none; }

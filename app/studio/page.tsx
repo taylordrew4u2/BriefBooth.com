@@ -242,18 +242,11 @@ export default function Studio() {
       <main id="main" className="studio-shell">
         <div className="studio-title">
           <div>
+            <span className="studio-eyebrow">YOUR CONSULTANT WORKSPACE</span>
             <h1>Your booking studio.</h1>
             <p>A little organization. More time for your clients.</p>
           </div>
-          {savedProfile?.published && (
-            <a
-              className="button"
-              href={"/book/" + savedProfile.slug}
-              target="_blank"
-            >
-              View booking page ↗
-            </a>
-          )}
+
         </div>
         {!loading && profile && (
           <section className="booking-link-card" aria-labelledby="booking-link-title">

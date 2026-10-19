@@ -19,9 +19,8 @@ export default function Home() {
               <span>One booking link.</span>
             </h1>
             <p>
-              Give clients a simple way to book your time.
-              <br className="desktop-break" /> You bring the expertise. We’ll
-              handle the scheduling.
+              Get to know your clients before you meet.
+              <br className="desktop-break" /> One link for your intake questions, consultation options, and availability.
             </p>
             <div className="hero-actions">
               <Link className="button" href="/account?mode=signup">
@@ -63,41 +62,19 @@ export default function Home() {
                 <span className="sample-tag">Example booking page</span>
               </div>
               <div className="preview-calendar">
-                <div className="calendar-title">
-                  <strong>Choose a time</strong>
-                  <span>October 2026</span>
-                </div>
-                <div className="mini-calendar">
-                  {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
-                    <span className="weekday" key={"d" + i}>
-                      {d}
-                    </span>
-                  ))}
-                  {Array.from({ length: 28 }, (_, i) => (
-                    <span
-                      key={i}
-                      className={
-                        i === 14
-                          ? "calendar-picked"
-                          : i < 11
-                            ? "calendar-muted"
-                            : ""
-                      }
-                    >
-                      {i + 1}
-                    </span>
-                  ))}
-                </div>
-                <div className="time-preview">
-                  <span>10:00 am</span>
-                  <span className="time-picked">11:30 am</span>
-                  <span>2:00 pm</span>
+                <div className="preview-journey"><span>1 · Introduce yourself</span><span>2 · Choose a consultation</span><span>3 · Pick a time</span></div>
+                <div className="preview-question">
+                  <span className="step-number">A QUICK INTRODUCTION</span>
+                  <h3>What would you like to work on?</h3>
+                  <p>A sentence or two is plenty.</p>
+                  <div className="preview-answer">I’m launching a new project and would love help planning my next steps.</div>
+                  <span className="field-help">Your consultant gets the context before you meet.</span>
                 </div>
                 <Link href="/book/demo" className="button preview-button">
                   Try the booking experience <span aria-hidden="true">→</span>
                 </Link>
                 <span className="preview-timezone">
-                  Times shown in your local timezone
+                  No client account needed
                 </span>
               </div>
             </div>
@@ -129,8 +106,7 @@ export default function Home() {
               <span className="step-number">01 / YOUR PAGE</span>
               <h3>Make it yours.</h3>
               <p>
-                Add your profile and the consultations you offer. Choose how
-                long each conversation needs.
+                Add your profile, choose an intake template, and offer the consultations that fit your work.
               </p>
             </article>
             <article>
@@ -145,8 +121,7 @@ export default function Home() {
               <span className="step-number">03 / YOUR NEXT CLIENT</span>
               <h3>Share. Book. Connect.</h3>
               <p>
-                Send your personal link. Clients choose a time and book without
-                creating an account.
+                Send your personal link. Clients answer your questions, then book a time—no account needed.
               </p>
             </article>
           </div>

@@ -36,3 +36,9 @@ Lint, production build, static-route/security-header checks, and diff whitespace
 ## Booking-link discovery and developer template
 
 Moved sharing out of the bottom of Profile into a persistent admin panel: full selectable URL, Copy booking link, client preview, and explicit setup instructions for unpublished profiles. Links use the saved published slug, so unsaved edits do not create invalid links. Verified clipboard output and visibility across admin tabs with the existing QA account. Added the App, web & full-stack development template with four questions (only the first required); verified applying and undoing its draft without changing saved account data. Lint, production build, static-route checks and whitespace checks passed.
+
+## Designly polish across the app
+
+Replaced the homepage calendar mockup with a representative intake-first journey, with a compact stacked preview on phones. Added a three-stage booking guide, refined form focus styles and consultation cards, and simplified the studio to emphasize copying the booking link with preview as a secondary action. Preserved the approved palette, one-question intake, free hosting configuration, and existing backend flows.
+
+Inspected rendered desktop homepage and 390px phone homepage, intake, and authenticated studio; followed intake through consultation selection to scheduling and verified the stage guide advances. Fixed the initially cramped mobile preview after visual review. Production build, lint, and static-route checks passed. No new services or billing changes.

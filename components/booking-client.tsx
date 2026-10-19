@@ -285,6 +285,11 @@ export default function Booking() {
                 </div>
               ) : (
                 <>
+                  <ol className="booking-journey" aria-label="Booking steps">
+                    {["About you", "Consultation", "Choose a time"].map((label, index) => (
+                      <li key={label} aria-current={stage === index ? "step" : undefined} className={stage >= index ? "reached" : ""}><span aria-hidden="true">{stage > index ? "✓" : index + 1}</span>{label}</li>
+                    ))}
+                  </ol>
                   {(stage > 0 || intakeStep > 0) && (
                     <button
                       className="back-button"
