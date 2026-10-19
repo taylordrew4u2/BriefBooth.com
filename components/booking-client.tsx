@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
+import { ProfileAvatar } from "@/components/profile-avatar";
 import { Logo } from "@/components/site-header";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -233,13 +234,7 @@ export default function Booking() {
         ) : (
           <div className="booking-layout">
             <section className="consultant-panel">
-              <div className="avatar large">
-                {profile.name
-                  .split(" ")
-                  .map((n) => n[0])
-                  .slice(0, 2)
-                  .join("")}
-              </div>
+              <ProfileAvatar name={profile.name} image={profile.avatar_data} />
               <h1>{profile.name}</h1>
               <p className="consultant-headline">{profile.headline}</p>
               <p className="consultant-bio">{profile.bio}</p>

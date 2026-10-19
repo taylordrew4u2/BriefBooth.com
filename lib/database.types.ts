@@ -4,6 +4,7 @@ type ProfileRow = {
   id: string;
   slug: string;
   name: string;
+  avatar_data: string;
   headline: string;
   bio: string;
   timezone: string;

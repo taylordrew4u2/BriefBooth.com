@@ -1,0 +1,38 @@
+# BriefBooth: public Zoom release preparation
+
+Status: not submitted. Existing development connection remains live for 4u Digital. Do not set `briefbooth_zoom_public=true` or replace current credentials before production authorization is approved and tested.
+
+## Prepared listing copy
+
+Name: BriefBooth
+
+Short description: Collect client intake, approve consultation requests, and automatically create a Zoom meeting for each confirmed consultation.
+
+Description: BriefBooth gives independent consultants a shareable intake and booking page. Clients answer a short questionnaire and request an available time. Consultants choose automatic confirmation or review each request. Connected Zoom accounts create a meeting only when a Zoom consultation is confirmed; BriefBooth emails the meeting link and intake to the consultant and client. Clients do not need a BriefBooth account. BriefBooth does not record meetings, read recordings, or synchronize calendars. Zoom account limits apply.
+
+Installation: Sign up and verify your BriefBooth email. Save your consultant profile, consultation type, and hours. In Studio → Profile, select Connect Zoom and authorize meeting creation. Publish and share your booking link.
+
+Use: Select Zoom for the consultation. Instant bookings create the meeting after submission. Approval-mode bookings create it after the consultant approves in Studio → Bookings. Both participants receive the unique join link by email.
+
+Removal: Remove BriefBooth from Zoom Marketplace → Manage → Added Apps. Existing Zoom meetings must be managed in Zoom. A robust deauthorization notification handler must be implemented before public release to remove cached OAuth credentials and update connection status.
+
+## Technical design / review notes
+
+- User-managed OAuth; minimum scope `meeting:write:meeting`.
+- A signed-in consultant starts OAuth. Expiring single-use state binds the callback to that consultant. Tokens are encrypted in Supabase Vault, excluded from client APIs, and refreshed under an owner-specific lock.
+- Each confirmed booking queues an owner-specific Zoom meeting. Approval-mode requests do not create meetings before approval. Meeting IDs/join links are associated with the booking. Email waits until the meeting is ready.
+- Intake is held in private booking records and confirmation-email snapshots; it is not sent as a Zoom meeting agenda. Zoom receives the generic consultation title, start time, duration, and meeting settings.
+- Postgres row-level security restricts consultant records. Public RPCs validate booking inputs and use unguessable management tokens. Tests cover cross-owner access, replay, pending requests, confirmation gating and cancellation.
+- Cloudflare Pages hosts the frontend. Supabase handles auth, data, OAuth callback and scheduled jobs; Brevo delivers email. No paid infrastructure is required by this configuration.
+
+## Remaining requirements
+
+1. Confirm public support address and legal operator. Prepare and obtain owner approval for public privacy/terms pages (including actual retention/deletion practices and rights contact). Publish Zoom installation/use/removal documentation and support page.
+2. Supply BriefBooth app icon, category and company information; complete Zoom's EU/trader declarations truthfully with the owner. These cannot be inferred from a display name.
+3. Complete production contact information and meeting scope. Production callback is the same Supabase `/functions/v1/zoom/callback` endpoint, with strict matching.
+4. Implement verified deauthorization events and appropriate token removal; test revoked consent and cross-consultant isolation.
+5. Stage production credentials separately from development. Do not break existing development-token refresh by replacing its client credentials while tokens remain in use. Use a per-connection environment identifier or reconnect the owner during cutover.
+6. Provide review test instructions and any requested demo/account. Submit for Zoom's functional/security review; outside-account distribution requires its approval.
+7. After approval, enable the public production flow, verify two independently owned consultant accounts, and retain the owner's working connection throughout migration.
+
+No review approval, external-account authorization, or production cutover has been claimed or completed.

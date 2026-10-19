@@ -20,6 +20,7 @@ export type Profile = {
   id: string;
   slug: string;
   name: string;
+  avatar_data: string;
   headline: string;
   bio: string;
   timezone: string;
@@ -45,6 +46,7 @@ export const demoProfile: Profile = {
   id: "demo",
   slug: "demo",
   name: "Alex Morgan",
+  avatar_data: "",
   headline: "Business & growth consultant",
   bio: "A little clarity goes a long way. Let’s talk through your next move and turn a big question into a practical plan.",
   timezone: "America/New_York",

@@ -5,6 +5,7 @@ import { defaultQuestions } from "@/lib/intake";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { AvatarPicker } from "@/components/avatar-picker";
 import { Logo } from "@/components/site-header";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -107,6 +108,7 @@ export default function Studio() {
                 id: user.id,
                 slug: "",
                 name: "",
+                avatar_data: "",
                 headline: "Independent consultant",
                 bio: "",
                 timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -332,6 +334,7 @@ export default function Studio() {
                   </p>
                 </div>
                 <form onSubmit={saveProfile}>
+                  <AvatarPicker name={profile.name} value={profile.avatar_data || ""} onChange={avatar_data=>setProfile({...profile,avatar_data})} />
                   <div className="form-row">
                     <label>
                       Your name

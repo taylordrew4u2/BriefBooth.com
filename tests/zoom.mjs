@@ -63,4 +63,21 @@ await db.query('select review_booking($1,false)',[req2]);
 assert.equal((await db.query('select status from bookings where id=$1',[req2])).rows[0].status,'declined');
 assert((await db.query('select * from available_slots($1,current_date+5)',[svc])).rows.some(r=>new Date(r.starts_at).getTime()===new Date(slot).getTime()));
 console.log('PASS approval mode, request notifications, slot hold, owner-only review, no Zoom before approval, approval replay protection, decline releases slot');
+
+
+// A second consultant must get a separate token record and see only their own connection.
+const second='00000000-0000-4000-8000-000000000099';
+await db.exec('reset role');
+await db.query("insert into auth.users values($1,'second@example.com')",[second]);
+await db.query("insert into profiles(id,slug,name,published) values($1,'second-consultant','Second consultant',true)",[second]);
+await db.query("select zoom_store($1,'{\"access_token\":\"second-token\",\"refresh_token\":\"second-refresh\",\"expires_in\":3600}')",[second]);
+assert.equal((await db.query('select count(distinct token_secret)::int n from briefbooth_private.zoom_connections')).rows[0].n,2);
+await db.query("select set_config('request.jwt.claim.sub',$1,false)",[second]);
+await db.exec('set role authenticated');
+assert.equal((await db.query('select zoom_status() s')).rows[0].s.connected,true);
+await assert.rejects(()=>db.query('select * from briefbooth_private.zoom_connections'),/permission denied/);
+await assert.rejects(()=>db.query('select zoom_begin()'),/awaiting approval/);
+await db.exec('reset role');
+console.log('PASS separate consultant token storage, private credentials, own connection status and pre-publication guard');
+
 await db.close();
