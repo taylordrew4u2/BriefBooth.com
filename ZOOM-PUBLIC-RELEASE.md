@@ -1,6 +1,6 @@
 # BriefBooth: public Zoom release preparation
 
-Status: not submitted. Existing development connection remains live for 4u Digital. Do not set `briefbooth_zoom_public=true` or replace current credentials before production authorization is approved and tested.
+Status: submitted October 19, 2026; Zoom shows Functional review. Existing development connection remains live for 4u Digital. Do not set `briefbooth_zoom_public=true` or replace current credentials before production authorization is approved and tested.
 
 ## Prepared listing copy
 
@@ -56,3 +56,7 @@ Zoom shows Ready for submission. briefbooth.com is VERIFIED via the unchanged pu
 Production deployment: Cloudflare Success confirmed, static Pages checks pass, expired OAuth callback returns 303, unsigned webhook returns 401, and a real signed challenge through the custom domain returns HTTP 200 with the correct HMAC response. The worker runs only on /api/zoom/*; static routes remain outside it. No paid plan was added.
 
 Reviewer notes, free signup URL and manual activation are saved. Legal agreement/accuracy checkboxes are unchecked pending owner confirmation. Submission has NOT been sent. Reviewer production access still needs coordination: the public authorization gate remains off, and the reviewer notes explicitly ask reviewers to contact support with their account email. This is not a claim that all consultants can authorize yet.
+
+## Submitted — October 19, 2026
+
+The owner explicitly approved the Marketplace Developer Agreement, accuracy attestation and submission. Both checkboxes were accepted and Submit clicked. Zoom confirmed: “Your app has been submitted. You will be notified when your app is approved or returned for corrections.” Status: Functional review, last updated Oct 19, 2026. Screenshot: /tmp/briefbooth-zoom-submitted.png. Unlisted, outside-EU, manual activation settings retained. No approval or public activation is claimed. Reviewer access coordination and final two-account production validation remain pending review.
