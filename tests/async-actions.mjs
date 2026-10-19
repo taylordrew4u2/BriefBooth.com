@@ -102,3 +102,35 @@ for(const outcome of ['reject','invalid','confirmed','declined']) {
   if(outcome==='invalid'||outcome==='reject') assert.match(messages.at(-1),/Couldn’t/);
 }
 console.log('PASS booking refresh/review exclusion, rapid actions, approval/decline, invalid response, and failure recovery');
+
+const validToken='11111111-1111-4111-8111-111111111111';
+for(const outcome of ['success','invalid','reject']) {
+  const flags=[],messages=[],routes=[],requests=[];
+  let resolve, reject;
+  const context={submittingRequest:{current:false},busy:false,demo:false,service:{id:'service'},slot:'2026-11-01T15:00:00Z',intake:{name:'Client',email:'client@example.com'},meetingMode:'zoom',answers:{},bookingRequest:{current:null},
+    crypto:{randomUUID:()=>validToken},URL,Error,
+    setSubmitting:v=>flags.push(v),setMessage:v=>messages.push(v),
+    window:{location:{origin:'https://briefbooth.com',assign:v=>routes.push(v)}},
+    db:()=>({rpc:(_name,params)=>{requests.push(params);return new Promise((yes,no)=>{resolve=yes;reject=no;});}})};
+  const submit=handler('components/booking-client.tsx','submit',context);
+  const pending=submit(); await submit();
+  assert.equal(requests.length,1,'Rapid booking clicks must only submit once');
+  if(outcome==='reject') reject(Error('offline')); else resolve({data:outcome==='invalid'?null:validToken,error:null});
+  await pending;
+  assert.equal(context.submittingRequest.current,false);
+  assert.deepEqual(flags,[true,false]);
+  assert.equal(routes.length,outcome==='success'?1:0,'Invalid or failed booking must not redirect');
+  if(outcome!=='success') {
+    assert(messages.at(-1));
+    const retry=submit(); resolve({data:validToken,error:null}); await retry;
+    assert.equal(requests[0].p_request,requests[1].p_request,'Retry must reuse the same idempotency key');
+  }
+}
+console.log('PASS client submission: rapid clicks, invalid response, network failure, and safe retry');
+for(const selection of [{service:null,day:''},{service:{id:'service'},day:''}]) {
+  const flags=[],slots=[],selected=[];
+  await handler('components/booking-client.tsx','load',{...selection,live:true,setSlots:v=>slots.push(v),setSlot:v=>selected.push(v),setBusy:v=>flags.push(v)})();
+  assert.deepEqual(flags,[false],'Clearing the date/service must release slot loading');
+  assert.equal(slots[0].length,0); assert.deepEqual(selected,['']);
+}
+console.log('PASS clearing consultation/date resets stale slots and releases loading');

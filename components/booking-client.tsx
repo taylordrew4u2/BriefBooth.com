@@ -14,6 +14,8 @@ import {
   Service,
 } from "@/lib/supabase";
 export default function Booking() {
+  const submittingRequest = useRef(false);
+  const [submitting, setSubmitting] = useState(false);
   const stepHeading = useRef<HTMLHeadingElement>(null);
   const bookingRequest = useRef<{ key: string; id: string } | null>(null);
   const [slug, setSlug] = useState<string | null>(null);
@@ -88,13 +90,13 @@ export default function Booking() {
     };
   }, [slug, demo]);
   useEffect(() => {
-    if (!service || !day) return;
     let live = true;
     async function load() {
       await Promise.resolve();
       if (!live) return;
       setSlots([]);
       setSlot("");
+      if (!service || !day) { setBusy(false); return; }
       setBusy(true);
       setMessage("");
       try {
@@ -162,6 +164,7 @@ export default function Booking() {
     const f = new FormData(e.currentTarget);
     if (f.get("website")) return;
     if (intakeStep === 0) {
+      if (!String(f.get("name") || "").trim()) { setMessage("Please enter your name before continuing."); return; }
       setIntake({ name: String(f.get("name")).trim(), email: String(f.get("email")).trim(), notes: "" });
     } else {
       const question = profile!.intake_questions[intakeStep - 1];
@@ -174,11 +177,13 @@ export default function Booking() {
     setMessage("");
   }
   async function submit() {
+    if (submittingRequest.current || busy || !service || !slot) return;
     if (demo) {
       setConfirmed(true);
       return;
     }
-    setBusy(true);
+    submittingRequest.current = true;
+    setSubmitting(true);
     setMessage("");
     try {
       const requestKey = service!.id + slot + intake.email + meetingMode;
@@ -195,6 +200,7 @@ export default function Booking() {
       };
       const { data, error } = await db().rpc("book_consultation", booking);
       if (error) throw error;
+      if (typeof data !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data)) throw new Error("We couldn’t verify the booking response. Please try again; your request will not be duplicated.");
       window.location.assign(
         new URL("/manage/" + data + "/", window.location.origin).href,
       );
@@ -205,7 +211,8 @@ export default function Booking() {
           : "We could not book that time. Please try again.",
       );
     } finally {
-      setBusy(false);
+      submittingRequest.current = false;
+      setSubmitting(false);
     }
   }
   return (
@@ -288,6 +295,7 @@ export default function Booking() {
                   {(stage > 0 || intakeStep > 0) && (
                     <button
                       className="back-button"
+                      disabled={submitting}
                       onClick={() => {
                         if (stage === 0) setIntakeStep(intakeStep - 1);
                         else setStage(stage - 1);
@@ -351,7 +359,7 @@ export default function Booking() {
                     </div>
                   ) : stage === 2 ? (
                     <>
-                        <fieldset className="meeting-options">
+                        <fieldset className="meeting-options" disabled={submitting}>
                           <legend>How would you like to meet?</legend>
                           <div className="meeting-options-grid">
                             {service?.meeting_modes.map((mode) => (
@@ -379,6 +387,7 @@ export default function Booking() {
                         </span>
                         <select
                           value={day}
+                          disabled={submitting}
                           onChange={(e) => setDay(e.target.value)}
                         >
                           <option value="">Select a day</option>
@@ -393,6 +402,7 @@ export default function Booking() {
                         Your timezone
                         <select
                           value={timezone}
+                          disabled={submitting}
                           onChange={(e) => setTimezone(e.target.value)}
                         >
                           {Array.from(
@@ -420,6 +430,7 @@ export default function Booking() {
                               slots.map((s) => (
                                 <button
                                   key={s}
+                                  disabled={submitting}
                                   onClick={() => setSlot(s)}
                                   className={
                                     slot === s
@@ -464,9 +475,9 @@ export default function Booking() {
                               <Button
                                 className="form-submit"
                                 onClick={submit}
-                                disabled={busy}
+                                disabled={busy || submitting}
                               >
-                                {busy
+                                {submitting
                                   ? profile.booking_mode === "approval" ? "Sending request…" : "Confirming…"
                                   : demo
                                     ? "Try demo booking"
