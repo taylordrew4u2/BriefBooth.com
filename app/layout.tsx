@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AuthReturn } from "@/components/auth-return";
 export const metadata: Metadata = {
   title: {
     default: "BriefBooth — Your expertise. Their next step.",
@@ -19,6 +20,7 @@ export default function RootLayout({
         <a className="skip-link" href="#main">
           Skip to content
         </a>
+        <AuthReturn />
         {children}
       </body>
     </html>

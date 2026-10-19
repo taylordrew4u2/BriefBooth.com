@@ -12,6 +12,11 @@ export default function Account() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   useEffect(() => {
+    const callback = new URLSearchParams(location.hash.slice(1));
+    if (callback.has("error_description")) {
+      queueMicrotask(() => setMessage("This email link has expired or has already been used. Sign in if you already confirmed your account, or use Forgot password to get a new link."));
+      history.replaceState(null, "", location.pathname + location.search);
+    }
     const queryMode = new URLSearchParams(location.search).get("mode");
     if (queryMode === "signup") queueMicrotask(() => setMode("signup"));
     if (queryMode === "password") {
@@ -40,7 +45,7 @@ export default function Account() {
         if (error) throw error;
         setMessage("Check your email for the password reset link.");
       } else if (mode === "signup") {
-        const { data, error } = await db().auth.signUp({ email, password });
+        const { data, error } = await db().auth.signUp({ email, password, options: { emailRedirectTo: location.origin + "/account/" } });
         if (error) throw error;
         if (data.session) router.push("/studio");
         else

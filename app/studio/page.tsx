@@ -41,6 +41,8 @@ export default function Studio() {
   const [uid, setUid] = useState("");
   const [tab, setTab] = useState("profile");
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [savedProfile, setSavedProfile] = useState<{slug: string; published: boolean} | null>(null);
+  const [savedHours, setSavedHours] = useState(false);
   const [services, setServices] = useState<Service[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [hours, setHours] = useState<Hours[]>(
@@ -113,6 +115,8 @@ export default function Studio() {
                 payment_notes: "",
               },
         );
+        setSavedProfile(p.data ? {slug: p.data.slug, published: p.data.published} : null);
+        setSavedHours(!!a.data?.length);
         setServices(s.data || []);
         setBookings(b.data || []);
         if (a.data?.length)
@@ -140,6 +144,11 @@ export default function Studio() {
   async function saveProfile(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!profile) return;
+    if (!profile.name.trim() || profile.slug === "demo" || !/^[a-z0-9][a-z0-9-]{2,39}$/.test(profile.slug)) {
+      setTab("profile");
+      setMessage("First, enter your name and a booking page address, then save your profile.");
+      return;
+    }
     setBusy(true);
     setMessage("");
     try {
@@ -147,12 +156,13 @@ export default function Studio() {
       const { error } = await db()
         .from("profiles")
         .upsert({ ...publicProfile, id: uid });
-      if (error) throw error;
+      if (error) throw new Error(error.code === "23505" ? "That booking page address is already taken. Please choose another." : error.message);
       const { error: settingsError } = await db()
         .from("consultant_settings")
         .upsert({ owner_id: uid, meeting_url, in_person_address });
       if (settingsError) throw settingsError;
-      setMessage("Profile saved.");
+      setSavedProfile({slug: profile.slug, published: profile.published});
+      setMessage("Saved. Your booking page is up to date.");
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Unable to save profile.");
     } finally {
@@ -161,6 +171,7 @@ export default function Studio() {
   }
   async function addService(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!savedProfile) { setTab("profile"); setMessage("Save your profile before adding a consultation."); return; }
     setBusy(true);
     const f = new FormData(e.currentTarget);
     const { data, error } = await db()
@@ -185,6 +196,7 @@ export default function Studio() {
   }
   async function saveHours(e: React.FormEvent) {
     e.preventDefault();
+    if (!savedProfile) { setTab("profile"); setMessage("Save your profile before setting your hours."); return; }
     setBusy(true);
     setMessage("");
     const invalid = hours.some((h) => h.enabled && h.end_time <= h.start_time);
@@ -203,6 +215,7 @@ export default function Studio() {
         })),
     });
     setBusy(false);
+    if (!error) setSavedHours(hours.some(h => h.enabled));
     setMessage(error ? error.message : "Availability saved.");
   }
   function updateHour(i: number, patch: Partial<Hours>) {
@@ -230,16 +243,28 @@ export default function Studio() {
             <h1>Your booking studio.</h1>
             <p>A little organization. More time for your clients.</p>
           </div>
-          {profile?.slug && profile.published && (
+          {savedProfile?.published && (
             <a
               className="button"
-              href={"/book/" + profile.slug}
+              href={"/book/" + savedProfile.slug}
               target="_blank"
             >
               View booking page ↗
             </a>
           )}
         </div>
+        {!loading && profile && (!savedProfile?.published || !services.some(s => s.active) || !savedHours) && (
+          <section className="notice" aria-label="Booking page setup">
+            <strong>Get your page ready to share</strong>
+            <p>Save your profile, add a consultation, and save your weekly hours. Customize your questionnaire whenever you like.</p>
+            <div className="form-row">
+              <button className="text-link" onClick={() => setTab("profile")}>{savedProfile?.published ? "✓ Profile published" : "1. Save and publish profile"}</button>
+              <button className="text-link" onClick={() => setTab("consultations")}>{services.some(s => s.active) ? "✓ Consultation added" : "2. Add a consultation"}</button>
+              <button className="text-link" onClick={() => setTab("availability")}>{savedHours ? "✓ Hours saved" : "3. Save weekly hours"}</button>
+              <button className="text-link" onClick={() => setTab("questionnaire")}>Customize intake questions</button>
+            </div>
+          </section>
+        )}
         <nav className="studio-tabs" aria-label="Manage booking page">
           {["profile", "questionnaire", "consultations", "availability", "bookings"].map((t) => (
             <button
@@ -379,14 +404,14 @@ export default function Studio() {
                     {busy ? "Saving…" : "Save profile"}
                   </Button>
                 </form>
-                {profile.slug && (
+                {savedProfile?.published && (
                   <div className="share-link">
-                    <span>Your intake link: /book/{profile.slug}</span>
+                    <span>Your intake link: /book/{savedProfile.slug}</span>
                     <button
                       onClick={async () => {
                         try {
                           await navigator.clipboard.writeText(
-                            location.origin + "/book/" + profile.slug,
+                            location.origin + "/book/" + savedProfile.slug,
                           );
                           setMessage("Intake link copied. Add it to your website or send it to a client.");
                         } catch {
@@ -394,7 +419,7 @@ export default function Studio() {
                             "Your booking link is " +
                               location.origin +
                               "/book/" +
-                              profile.slug,
+                              savedProfile.slug,
                           );
                         }
                       }}
@@ -444,7 +469,7 @@ export default function Studio() {
                     <Button type="submit" disabled={busy}>{busy?"Saving…":"Save questionnaire"}</Button>
                   </div>
                 </form>
-                <p className="field-help">Share /book/{profile.slug || "your-name"} in a message or use it as the destination of a “Book a consultation” button on your website.</p>
+                <p className="field-help">{savedProfile?.published ? `Share /book/${savedProfile.slug} in a message or use it as the destination of a “Book a consultation” button on your website.` : "Save and publish your profile to get your shareable intake link."}</p>
               </>
             ) : tab === "consultations" ? (
               <>
