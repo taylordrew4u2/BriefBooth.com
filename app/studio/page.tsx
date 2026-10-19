@@ -113,6 +113,7 @@ export default function Studio() {
                 meeting_url: "",
                 in_person_address: "",
                 published: false,
+                booking_mode: "instant",
                 intake_questions: defaultQuestions,
                 payment_methods: [],
                 payment_notes: "",
@@ -383,6 +384,13 @@ export default function Studio() {
                         setProfile({ ...profile, bio: e.target.value })
                       }
                     />
+                  </label>
+                  <label>Booking confirmation
+                    <select value={profile.booking_mode} onChange={e=>setProfile({...profile,booking_mode:e.target.value as "instant"|"approval"})}>
+                      <option value="instant">Instant booking — confirm automatically</option>
+                      <option value="approval">Request approval — I approve each meeting</option>
+                    </select>
+                    <span className="field-help">Requests hold the selected time. Zoom links and confirmation emails are sent only after approval. Save your profile to apply this setting.</span>
                   </label>
                   <ZoomConnection />
                   <label>
@@ -699,7 +707,7 @@ export default function Studio() {
                       <article className="booking-record" key={b.id}>
                         <div>
                           <span className={"booking-status " + b.status}>
-                            {b.status}
+                            {b.status === "pending_approval" ? "Awaiting approval" : b.status}
                           </span>
                           <h3>
                             {services.find((s) => s.id === b.service_id)
@@ -729,6 +737,10 @@ export default function Studio() {
                             </details>
                           )}
                         </div>
+                        {b.status==="pending_approval" && <div className="manage-actions">{[true,false].map(approve=><Button key={String(approve)} type="button" disabled={busy} onClick={async()=>{
+                          setBusy(true);const {data,error}=await db().rpc("review_booking",{p_booking:b.id,p_approve:approve});setBusy(false);
+                          if(error)setMessage(error.message);else{setBookings(items=>items.map(item=>item.id===b.id?{...item,status:data}:item));setMessage(approve?"Request approved. Meeting details will be emailed to you and your client.":"Request declined. The client will be notified.");}
+                        }}>{approve?"Approve request":"Decline request"}</Button>)}</div>}
                         <a href={"/manage/" + b.manage_token}>
                           Manage booking ↗
                         </a>

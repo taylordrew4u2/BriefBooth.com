@@ -26,6 +26,7 @@ export type Profile = {
   meeting_url: string;
   in_person_address: string;
   published: boolean;
+  booking_mode: "instant" | "approval";
   intake_questions: IntakeQuestion[];
   payment_methods: string[];
   payment_notes: string;
@@ -50,6 +51,7 @@ export const demoProfile: Profile = {
   meeting_url: "",
   in_person_address: "",
   published: true,
+  booking_mode: "instant",
   intake_questions: defaultQuestions,
   payment_methods: ["Cash App", "Venmo"],
   payment_notes: "We’ll agree on any consultation fee together before we meet.",

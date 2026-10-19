@@ -320,7 +320,7 @@ export default function Booking() {
                       ? intakeStep === 0 ? "A few quick answers, then we’ll find a time. No account needed." : "One question at a time. A sentence or two is plenty."
                       : stage === 1
                         ? "Nice, your answers are ready. What would you like to book?"
-                        : "Choose a date and an available time, then confirm your consultation."}
+                        : "Choose a date and an available time."}
                   </p>
                   {stage === 1 ? (
                     <div className="service-list">
@@ -462,7 +462,7 @@ export default function Booking() {
                               </div>
                               <div className="inset-form">
                                 <h3>Negotiate with consultant</h3>
-                                <p>Free to book. No payment is collected here. Agree on any consultation fee directly with your consultant.</p>
+                                <p>{profile.booking_mode === "approval" ? "Your consultant must approve this request before the meeting is confirmed. " : ""}Free to book. No payment is collected here. Agree on any consultation fee directly with your consultant.</p>
                                 {!!profile.payment_methods?.length && <p><strong>Accepted methods:</strong> {profile.payment_methods.join(", ")}</p>}
                                 {profile.payment_notes && <p style={{whiteSpace: "pre-wrap"}}>{profile.payment_notes}</p>}
                               </div>
@@ -472,10 +472,10 @@ export default function Booking() {
                                 disabled={busy}
                               >
                                 {busy
-                                  ? "Confirming…"
+                                  ? profile.booking_mode === "approval" ? "Sending request…" : "Confirming…"
                                   : demo
                                     ? "Try demo booking"
-                                    : "Confirm booking"}{" "}
+                                    : profile.booking_mode === "approval" ? "Send consultation request" : "Confirm booking"}{" "}
                                 <span aria-hidden="true">→</span>
                               </Button>
                             </>

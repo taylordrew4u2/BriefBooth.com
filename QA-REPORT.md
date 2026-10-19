@@ -58,3 +58,9 @@ Fixed misleading consultation empty-state guidance: a saved profile now prompts 
 - A clearly labeled production verification booking created Zoom meeting 72171581232. Both consultant and client-alias emails arrived in Gmail with that unique meeting ID and intake details. The BriefBooth verification booking was cancelled afterward; Zoom meetings currently require manual removal after cancellation (create-only scope).
 - Database tests cover email gating, two-recipient delivery snapshot, replay safety, private credentials, state consumption, and configuration key parsing. Existing tests, lint and production build passed.
 - Weekly availability for 4u Digital is still unset; real booking cannot start until the owner supplies hours.
+
+## Request approval — October 19, 2026
+- Added per-consultant instant/approval preference; existing consultants retain instant booking by default.
+- Set 4u Digital to approval with Sunday–Saturday 09:00–20:00 America/New_York availability.
+- Pending requests hold their slot, notify both participants as requests, and expose no Zoom link. Only the owner can approve or decline. Approval queues Zoom creation and then confirmation emails; decline releases the slot and notifies the client.
+- Automated tests passed for cross-owner rejection, repeated approval, pending Zoom/email gating, request messages, approval confirmation and decline slot release. Existing database, email, payment-paused and Zoom checks passed; lint and build passed.

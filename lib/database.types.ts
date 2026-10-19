@@ -8,6 +8,7 @@ type ProfileRow = {
   bio: string;
   timezone: string;
   published: boolean;
+  booking_mode: "instant" | "approval";
   intake_questions: IntakeQuestion[];
   payment_methods: string[];
   payment_notes: string;
@@ -66,6 +67,7 @@ export type Database = {
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
     Functions: {
+      review_booking: {Args: {p_booking: string;p_approve: boolean};Returns: string};
       zoom_status: { Args: Record<string, never>; Returns: { connected: boolean } };
       zoom_begin: { Args: Record<string, never>; Returns: string };
       available_slots: {

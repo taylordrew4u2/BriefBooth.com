@@ -78,12 +78,12 @@ export default function Manage() {
         ) : booking ? (
           <>
             <div className="confirmation-check">
-              {booking.status === "confirmed" ? "✓" : "×"}
+              {booking.status === "confirmed" ? "✓" : booking.status === "pending_approval" ? "…" : "×"}
             </div>
             <h1>
               {booking.status === "confirmed"
                 ? "You’re on the calendar."
-                : booking.status === "pending_payment" ? "Your time is held for checkout." : booking.status === "payment_processing" ? "Your payment is processing." : booking.status === "expired" ? "Your checkout has expired." : "Your booking is cancelled."}
+                : booking.status === "pending_approval" ? "Your request is awaiting approval." : booking.status === "declined" ? "Your request was declined." : booking.status === "pending_payment" ? "Your time is held for checkout." : booking.status === "payment_processing" ? "Your payment is processing." : booking.status === "expired" ? "Your checkout has expired." : "Your booking is cancelled."}
             </h1>
             <p>
               {booking.title} with {booking.consultant}
@@ -105,7 +105,9 @@ export default function Manage() {
               </span>
               <small>{Intl.DateTimeFormat().resolvedOptions().timeZone}</small>
             </div>
+            {booking.status === "pending_approval" && <p>Your consultant will review your intake and requested time. Meeting details will be emailed after approval. This is not a confirmed appointment.</p>}
             <div className="inset-form"><h3>Negotiate with consultant</h3><p>No payment was collected through BriefBooth. Arrange any consultation fee and payment method directly with your consultant.</p></div>
+            {booking.status === "pending_approval" && <Button disabled={busy} onClick={cancel}>Cancel request</Button>}
             {booking.status === "confirmed" && (
               <>
                 <p>
