@@ -64,3 +64,11 @@ Fixed misleading consultation empty-state guidance: a saved profile now prompts 
 - Set 4u Digital to approval with Sunday–Saturday 09:00–20:00 America/New_York availability.
 - Pending requests hold their slot, notify both participants as requests, and expose no Zoom link. Only the owner can approve or decline. Approval queues Zoom creation and then confirmation emails; decline releases the slot and notifies the client.
 - Automated tests passed for cross-owner rejection, repeated approval, pending Zoom/email gating, request messages, approval confirmation and decline slot release. Existing database, email, payment-paused and Zoom checks passed; lint and build passed.
+
+## Live client request and admin approval — October 19, 2026
+
+Completed the published 4u Digital developer intake in the client UI, using an owner-controlled Gmail alias and a clearly labeled test appointment for October 22, 11:15–11:45 a.m. Eastern. The request remained pending with no Zoom meeting. Both request emails arrived in Gmail with the intake answers and approval wording.
+
+Approved that request in the owner's studio Bookings tab. The client page automatically changed to confirmed and then displayed its newly generated Zoom link. Normal scheduled workers delivered both confirmation messages to the consultant and client-alias addresses; read both delivered bodies and verified identical Zoom links, intake answers, duration, and Eastern date/time. No worker was manually invoked. Cancelled the BriefBooth test appointment afterward to release availability. The generated Zoom test meeting remains for manual removal because the connection has create-only permission.
+
+No application fix was required for this flow. No paid plan, upgrade, payment, or additional service was enabled.
