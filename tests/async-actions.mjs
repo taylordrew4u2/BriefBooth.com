@@ -75,3 +75,30 @@ const states=[];
 await handler('components/zoom-connection.tsx','loadStatus',{active:true,db:()=>({rpc:async()=>{throw new Error('offline');}}),setStatus:value=>states.push(value)})();
 assert.deepEqual(states,['error']);
 console.log('PASS Zoom connection distinguishes connected, disconnected, invalid response, and network errors');
+
+// A refresh and approval share a synchronous lock, including rapid repeated clicks.
+for (const first of ['refreshBookings','reviewRequest']) {
+  let resolve;
+  let calls=0;
+  const request=()=>{calls++; return new Promise(r=>{resolve=r;});};
+  const context={bookingAction:{current:false},setRefreshing(){},setBusy(){},setMessage(){},setNow(){},setBookings(){},uid:'owner',
+    db:()=>({rpc:request,from:()=>({select:()=>({eq:()=>({order:request})})})})};
+  const refresh=handler('app/studio/page.tsx','refreshBookings',context);
+  const review=handler('app/studio/page.tsx','reviewRequest',context);
+  const pending=first==='refreshBookings'?refresh():review('booking',true);
+  await refresh(); await review('booking',false);
+  assert.equal(calls,1,'Overlapping refresh/review must not start another request');
+  resolve({data:first==='refreshBookings'?[]:'confirmed',error:null}); await pending;
+  assert.equal(context.bookingAction.current,false,'The lock must release after success');
+}
+for(const outcome of ['reject','invalid','confirmed','declined']) {
+  const busy=[],messages=[],updates=[];
+  const context={bookingAction:{current:false},setBusy:v=>busy.push(v),setMessage:v=>messages.push(v),setNow(){},setBookings:v=>updates.push(v),
+    db:()=>({rpc:async()=>{if(outcome==='reject') throw Error('offline'); return {data:outcome==='invalid'?null:outcome,error:null};}})};
+  await handler('app/studio/page.tsx','reviewRequest',context)('booking',outcome!=='declined');
+  assert.equal(context.bookingAction.current,false);
+  assert.deepEqual(busy,[true,false]);
+  assert.equal(updates.length,['confirmed','declined'].includes(outcome)?1:0);
+  if(outcome==='invalid'||outcome==='reject') assert.match(messages.at(-1),/Couldn’t/);
+}
+console.log('PASS booking refresh/review exclusion, rapid actions, approval/decline, invalid response, and failure recovery');

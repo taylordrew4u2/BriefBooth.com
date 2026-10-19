@@ -2,7 +2,7 @@
 import { ZoomConnection } from "@/components/zoom-connection";
 import { IntakeTemplatePicker } from "@/components/intake-template-picker";
 import { defaultQuestions } from "@/lib/intake";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AvatarPicker } from "@/components/avatar-picker";
@@ -64,6 +64,7 @@ export default function Studio() {
   const [search, setSearch] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const [refreshing, setRefreshing] = useState(false);
+  const bookingAction = useRef(false);
   useEffect(() => {
     if (!configured) {
       router.replace("/account");
@@ -283,13 +284,27 @@ export default function Studio() {
     return matches && `${b.client_name} ${b.client_email} ${title}`.toLowerCase().includes(search.trim().toLowerCase());
   }).sort((a,b) => bookingFilter === "history" ? Date.parse(b.starts_at)-Date.parse(a.starts_at) : Date.parse(a.starts_at)-Date.parse(b.starts_at));
   async function refreshBookings() {
+    if (bookingAction.current) return;
+    bookingAction.current = true;
     setRefreshing(true);
     try {
       const {data,error} = await db().from("bookings").select("*").eq("owner_id",uid).order("starts_at");
       if(error) throw error;
       setBookings(data || []); setNow(Date.now()); setMessage("Bookings are up to date.");
     } catch { setMessage("Couldn’t refresh bookings. Please try again."); }
-    finally { setRefreshing(false); }
+    finally { bookingAction.current = false; setRefreshing(false); }
+  }
+  async function reviewRequest(bookingId: string, approve: boolean) {
+    if (bookingAction.current) return;
+    bookingAction.current = true;
+    setBusy(true); setMessage("");
+    try {
+      const {data,error} = await db().rpc("review_booking", {p_booking:bookingId,p_approve:approve});
+      if (error || data !== (approve ? "confirmed" : "declined")) throw new Error("Review did not complete");
+      setBookings(items => items.map(item => item.id === bookingId ? {...item,status:data} : item));
+      setMessage(approve ? "Request approved. Meeting details will be emailed to you and your client." : "Request declined. The client will be notified.");
+    } catch { setMessage("Couldn’t update this request. Refresh bookings and try again."); }
+    finally { bookingAction.current = false; setBusy(false); }
   }
   return (
     <>
@@ -764,7 +779,7 @@ export default function Studio() {
                 </div>
                 <div className="booking-toolbar">
                   <label>Find a booking<Input type="search" placeholder="Client name, email, or meeting type" value={search} onChange={event => setSearch(event.target.value)} /></label>
-                  <Button variant="outline" disabled={refreshing} onClick={refreshBookings}>{refreshing ? "Refreshing…" : "Refresh"}</Button>
+                  <Button variant="outline" disabled={refreshing || busy} onClick={refreshBookings}>{refreshing ? "Refreshing…" : "Refresh"}</Button>
                 </div>
                 <div className="booking-filters" role="group" aria-label="Filter bookings">
                   {[["requests", `Needs approval (${pending.length})`],["upcoming","Upcoming"],["history","History"],["all","All bookings"]].map(([value,label]) => <button key={value} aria-pressed={bookingFilter === value} onClick={() => setBookingFilter(value)}>{label}</button>)}
@@ -812,16 +827,7 @@ export default function Studio() {
                             </details>
                           )}
                         </div>
-                        {b.status==="pending_approval" && <div className="manage-actions">{[true,false].map(approve=><Button variant={approve ? "default" : "outline"} key={String(approve)} type="button" disabled={busy} onClick={async()=>{
-                          setBusy(true);
-                          try {
-                            const {data,error}=await db().rpc("review_booking",{p_booking:b.id,p_approve:approve});
-                            if(error) throw error;
-                            setBookings(items=>items.map(item=>item.id===b.id?{...item,status:data}:item));
-                            setMessage(approve?"Request approved. Meeting details will be emailed to you and your client.":"Request declined. The client will be notified.");
-                          } catch { setMessage("Couldn’t update this request. Refresh bookings and try again."); }
-                          finally { setBusy(false); }
-                        }}>{approve?"Approve request":"Decline request"}</Button>)}</div>}
+                        {b.status==="pending_approval" && <div className="manage-actions">{[true,false].map(approve=><Button variant={approve ? "default" : "outline"} key={String(approve)} type="button" disabled={busy || refreshing} onClick={() => reviewRequest(b.id, approve)}>{approve?"Approve request":"Decline request"}</Button>)}</div>}
                         <a href={"/manage/" + b.manage_token}>
                           Manage booking ↗
                         </a>
