@@ -165,7 +165,7 @@ p {
 p {
   color: var(--muted-foreground);
 }
-button {
+:where(button:not([data-slot])) {
   color: inherit;
 }
 :where(button:not([data-slot])) {

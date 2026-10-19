@@ -18,6 +18,7 @@ Verified on https://briefbooth.com using isolated test consultants and Gmail ali
 | Calendar | Downloaded ICS included the correct UTC time, duration, title, and Zoom location. |
 | Cancellation | Cancelled through the private management page; exact original time became available again. |
 | Setup guidance | Added a checklist for published profile, active consultation, and saved availability. Early service/hours saves direct new consultants to profile setup. |
+| Button readability | Fixed a global color rule that overrode white labels on dark action buttons. |
 | Static hosting | Public/private deep links, assets, security headers, no-cache/no-index management routes, and 404 checks passed. |
 
 Production build, lint, and database tests pass. Database coverage includes overlap prevention, access isolation, timezone/DST, intake validation, immutable email snapshots, retries, and the paused-payment restrictions.
