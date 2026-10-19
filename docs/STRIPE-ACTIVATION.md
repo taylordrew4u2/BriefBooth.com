@@ -28,3 +28,9 @@ Do not report live payments as working until activation and provider verificatio
 Production build, lint, full existing regression suite and new local payment/approval tests pass. New checks cover approval snapshot across profile changes, no Zoom before approval, exactly one Zoom job after payment replay, sandbox-to-live account mapping, publishing gate, checkout duplicate-click guard, expected totals, stable retry IDs and Stripe-only redirect URLs. All test payment records are local fixtures, not live Stripe transactions.
 
 Cloudflare and Supabase remain on the existing free setup; Vercel and unrelated projects are unchanged. Stripe transaction fees are the user-approved exception.
+
+## End-of-session evidence
+
+The app interface and guarded payment server are deployed. The user authorized storing the existing live webhook secret, and `briefbooth_stripe_production_webhook_secret` is now present in encrypted Vault (format checked without printing it). The live API key is still awaiting the user credential handoff; the prepared Stripe form is at `/apikeys/create`, and the separate Vault form is named `briefbooth_stripe_production_key`. Do not toggle activation before it is saved and verified.
+
+Live admin previews displayed $5 + $0.46 = $5.46 and $500 + $15.24 = $515.24. The example form was closed without saving; the existing 4u Digital consultation remains $0. Live Pages route/security checks passed. The webhook endpoint remains disabled until the credential/configuration prerequisites are complete.
