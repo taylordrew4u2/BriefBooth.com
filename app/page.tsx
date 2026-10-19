@@ -126,6 +126,18 @@ export default function Home() {
             </article>
           </div>
         </section>
+        <section className="consultant-control" aria-labelledby="control-title">
+          <div className="control-intro">
+            <span className="step-number">PREPARED BEFORE THE FIRST HELLO</span>
+            <h2 id="control-title">Less admin.<br />A better first conversation.</h2>
+            <p>Give every client a clear next step, and keep the details together in your studio.</p>
+          </div>
+          <div className="control-features">
+            <article><span aria-hidden="true">01</span><div><h3>Ask a little. Learn a lot.</h3><p>Start with a specialty template. Clients answer one friendly question at a time, with room to skip optional details.</p></div></article>
+            <article><span aria-hidden="true">02</span><div><h3>You decide what gets confirmed.</h3><p>Let clients book instantly or review each request first. Your intake answers are right there when you decide.</p></div></article>
+            <article><span aria-hidden="true">03</span><div><h3>Keep everyone on the same page.</h3><p>Confirmation emails bring together the intake, appointment time, and Zoom link or in-person details.</p></div></article>
+          </div>
+        </section>
         <section className="closing">
           <div>
             <h2>Your next conversation starts here.</h2>
@@ -151,6 +163,18 @@ export default function Home() {
               Clients can cancel before the consultation starts and book another
               time.
             </p>
+          </details>
+          <details>
+            <summary>Can I approve requests before a meeting is confirmed?</summary>
+            <p>Yes. Choose approval mode in your studio. Review the client’s intake, then approve or decline. The requested time is held while you decide.</p>
+          </details>
+          <details>
+            <summary>Can I charge for my consultation?</summary>
+            <p>Booking through BriefBooth is free. Agree on any consultation fee directly with your client and share your preferred payment methods. BriefBooth does not collect payments.</p>
+          </details>
+          <details>
+            <summary>Can I connect Zoom?</summary>
+            <p>Automatic Zoom connections are currently available to our initial connected account while broader access awaits Zoom review. Other consultants can add a Zoom meeting link in their studio.</p>
           </details>
           <details>
             <summary>Does BriefBooth sync my other calendars?</summary>
