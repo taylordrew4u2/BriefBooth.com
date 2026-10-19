@@ -184,26 +184,29 @@ export default function Studio() {
     if (!savedProfile) { setTab("profile"); setMessage("Save your profile before adding a consultation."); return; }
     setBusy(true);
     const f = new FormData(e.currentTarget);
-    const { data, error } = await db()
-      .from("services")
-      .insert({
-        owner_id: uid,
-        title: String(f.get("title")),
-        description: String(f.get("description")),
-        duration: Number(f.get("duration")),
-        amount_cents: 0,
-        meeting_modes: String(f.get("meeting_modes")).split(","),
-      })
-      .select()
-      .single();
-    setBusy(false);
-    if (error) setMessage(error.message);
-    else {
+    setMessage("");
+    try {
+      const { data, error } = await db()
+        .from("services")
+        .insert({
+          owner_id: uid,
+          title: String(f.get("title")),
+          description: String(f.get("description")),
+          duration: Number(f.get("duration")),
+          amount_cents: 0,
+          meeting_modes: String(f.get("meeting_modes")).split(","),
+        })
+        .select()
+        .single();
+      if (error) throw error;
       setServices([...services, data]);
       setAdding(false);
       setMessage("Consultation added.");
-    }
+    } catch {
+      setMessage("Couldn’t confirm the consultation was saved. Reload to check before adding it again.");
+    } finally { setBusy(false); }
   }
+
   async function saveHours(e: React.FormEvent) {
     e.preventDefault();
     if (!savedProfile) { setTab("profile"); setMessage("Save your profile before setting your hours."); return; }
@@ -215,19 +218,22 @@ export default function Studio() {
       setMessage("Each end time must be after its start time.");
       return;
     }
-    const { error } = await db().rpc("save_availability", {
-      p_hours: hours
-        .filter((h) => h.enabled)
-        .map(({ weekday, start_time, end_time }) => ({
-          weekday,
-          start_time,
-          end_time,
-        })),
-    });
-    setBusy(false);
-    if (!error) setSavedHours(hours.some(h => h.enabled));
-    setMessage(error ? error.message : "Availability saved.");
+    try {
+      const { error } = await db().rpc("save_availability", {
+        p_hours: hours
+          .filter((h) => h.enabled)
+          .map(({ weekday, start_time, end_time }) => ({
+            weekday,
+            start_time,
+            end_time,
+          })),
+      });
+      if (!error) setSavedHours(hours.some(h => h.enabled));
+      setMessage(error ? error.message : "Availability saved.");
+    } catch { setMessage("Couldn’t save your hours. Check your connection and try again."); }
+    finally { setBusy(false); }
   }
+
   function updateHour(i: number, patch: Partial<Hours>) {
     setHours(hours.map((h, n) => (n === i ? { ...h, ...patch } : h)));
   }

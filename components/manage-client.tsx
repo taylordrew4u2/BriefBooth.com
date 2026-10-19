@@ -52,20 +52,23 @@ export default function Manage() {
   }, [token]);
   async function cancel() {
     setBusy(true);
-    const { data, error } = await db().rpc("cancel_booking", {
-      p_token: token!,
-    });
-    setBusy(false);
-    if (error || !data)
-      setMessage(
-        "This booking could not be cancelled. It may have already started or been cancelled.",
-      );
-    else {
-      setBooking({ ...booking!, status: "cancelled" });
-      setConfirm(false);
-      setMessage("Your booking has been cancelled.");
+    setMessage("");
+    try {
+      const { data, error } = await db().rpc("cancel_booking", { p_token: token! });
+      if (error || !data) {
+        setMessage("This booking could not be cancelled. It may have already started or been cancelled. Refresh the page to check its status.");
+      } else {
+        setBooking({ ...booking!, status: "cancelled" });
+        setConfirm(false);
+        setMessage("Your booking has been cancelled.");
+      }
+    } catch {
+      setMessage("Connection interrupted. Refresh to check whether cancellation went through before trying again.");
+    } finally {
+      setBusy(false);
     }
   }
+
   return (
     <>
       <header className="simple-header">

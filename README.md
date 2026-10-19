@@ -141,6 +141,8 @@ This is a conceptual workflow: `MeetingReady`, `EmailQueued`, and `ProviderAccep
 
 ## Verification
 
+See the [October 19 end-to-end QA report](docs/QA-2026-10-19.md) for fixes, live observations, and explicitly untested boundaries.
+
 ```sh
 npm run lint
 npm test

@@ -71,8 +71,20 @@ export default function Account() {
     const { data } = db().auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") setMode("password");
     });
-    return () => data.subscription.unsubscribe();
+  return () => data.subscription.unsubscribe();
   }, []);
+  async function savePassword(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setBusy(true); setMessage("");
+    try {
+      const { error } = await db().auth.updateUser({
+        password: String(new FormData(e.currentTarget).get("password")),
+      });
+      if (error) setMessage(error.message);
+      else router.push("/studio");
+    } catch { setMessage("Couldn’t save your password. Check your connection and try again."); }
+    finally { setBusy(false); }
+  }
   return (
     <>
       <header className="simple-header">
@@ -158,18 +170,7 @@ export default function Account() {
           <form
             onSubmit={
               mode === "password"
-                ? async (e) => {
-                    e.preventDefault();
-                    setBusy(true);
-                    const { error } = await db().auth.updateUser({
-                      password: String(
-                        new FormData(e.currentTarget).get("password"),
-                      ),
-                    });
-                    setBusy(false);
-                    if (error) setMessage(error.message);
-                    else router.push("/studio");
-                  }
+                ? savePassword
                 : submit
             }
           >
