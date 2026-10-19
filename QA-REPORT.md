@@ -24,3 +24,11 @@ Verified on https://briefbooth.com using isolated test consultants and Gmail ali
 Production build, lint, and database tests pass. Database coverage includes overlap prevention, access isolation, timezone/DST, intake validation, immutable email snapshots, retries, and the paused-payment restrictions.
 
 Stripe remains paused. Cloudflare Pages, Supabase, and Brevo retain their existing free configuration and quotas. No subscription, paid fallback, or infrastructure upgrade was added. Zoom links are provided by consultants; the app does not create Zoom rooms or sync external calendars. Reminder and cancellation emails remain outside this release.
+
+## Phone usability — October 18, 2026
+
+Checked responsive browser viewports at 320px and 390px: homepage, sign-in, consultant profile/questionnaire/availability/preferences, one-question intake, consultation selection, meeting mode, date/time selection, and demo confirmation. Completed the in-person demo journey without creating a real appointment.
+
+Fixed narrow-screen intake overflow, stacked Zoom/in-person choices, increased tap targets, and used 16px form text to prevent phone input zoom. Restored mobile Sign in, wrapped studio tabs so every section stays visible, and shortened the final intake button to “Choose consultation.” Preserved the existing colors and simple question-by-question flow.
+
+Lint, production build, static-route/security-header checks, and diff whitespace checks passed. These are responsive browser checks, not physical iOS/Android device tests. No service plans, billing settings, or backend/payment behavior changed.

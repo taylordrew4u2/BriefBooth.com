@@ -1669,3 +1669,49 @@ textarea {
 .price-breakdown dl > div { display: flex; gap: 18px; justify-content: space-between; margin: 8px 0; }
 .price-breakdown dd { margin: 0; white-space: nowrap; }
 .price-breakdown .price-total { border-top: 1px solid #dce7f2; margin-top: 14px; padding-top: 14px; font-weight: 700; color: #333333; }
+
+/* Small screens: let content wrap instead of increasing a grid's minimum width. */
+form { grid-template-columns: minmax(0, 1fr); }
+form > *, .form-row > *, .service-option > div, .service-admin > div { min-width: 0; }
+.booking-main, .consultant-panel, .studio-panel, .manage-card { overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  input, textarea, select { font-size: 16px; }
+  [data-slot="button"], .form-submit, .button { max-width: 100%; height: auto; white-space: normal; min-height: 48px; }
+  .form-submit { text-align: left; gap: 12px; }
+  .form-submit > span { flex-shrink: 0; }
+  .meeting-options-grid { grid-template-columns: minmax(0, 1fr); }
+  .meeting-mode-option { min-height: 52px; }
+  .meeting-mode-option span { min-width: 0; }
+  .consultant-bio-mobile summary { min-height: 44px; display: list-item; align-content: center; }
+  .auth-switch button, .share-link button, .cancel-link, .checkbox-label, .text-link { min-height: 44px; }
+  .studio-tabs button { min-height: 44px; }
+  .manage-actions > * { flex: 1 1 100%; }
+  .hours-times > input { flex: 1; min-width: 0; }
+  .service-option { padding: 18px; gap: 12px; }
+  .booking-shell, .studio-shell, .manage-card { padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+}
+@media (max-width: 360px) {
+  .booking-main, .consultant-panel, .studio-panel, .auth-card, .manage-card { padding: 20px 16px; }
+  .auth-layout, .studio-shell { padding-inline: 16px; }
+  .inset-form { padding: 16px; }
+  .simple-header, .studio-header { padding-inline: 16px; }
+  .studio-header nav { gap: 8px; }
+  .logo { font-size: 19px; }
+}
+@media (max-width: 740px) {
+  .site-header nav > a:nth-child(2) { display: none; }
+  .site-header .nav-signin { display: inline-flex; font-size: 13px; white-space: nowrap; }
+  .site-header nav { gap: 10px; }
+}
+@media (max-width: 360px) {
+  .site-header { padding-inline: 16px; }
+  .site-header nav { gap: 6px; }
+  .site-header .button.small { padding-inline: 8px; }
+  .site-header .button.small span { display: none; }
+  .hero h1 { font-size: 38px; letter-spacing: -1.5px; }
+}
+@media (max-width: 700px) {
+  .studio-tabs { flex-wrap: wrap; overflow: visible; }
+  .studio-shell > .notice .form-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .studio-shell > .notice .text-link { margin: 0; padding: 8px 0; font-size: 13px; text-align: left; }
+}

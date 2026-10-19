@@ -534,7 +534,7 @@ export default function Booking() {
                           className="form-submit"
                           disabled={busy}
                         >
-                          {intakeStep < profile.intake_questions.length ? "Continue" : "Choose a consultation"} <span aria-hidden="true">→</span>
+                          {intakeStep < profile.intake_questions.length ? "Continue" : "Choose consultation"} <span aria-hidden="true">→</span>
                         </Button>
                         {intakeStep > 0 && !profile.intake_questions[intakeStep - 1].required && (
                           <button type="button" className="text-link" onClick={() => {

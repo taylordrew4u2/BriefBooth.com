@@ -32,7 +32,7 @@ try {
     .getByLabel(/What would you like to discuss/)
     .fill("Help defining my next steps.");
   const actionStyle = await page
-    .getByRole("button", { name: "Choose a consultation" })
+    .getByRole("button", { name: "Choose consultation" })
     .evaluate((button) => {
       const style = getComputedStyle(button);
       return { background: style.backgroundColor, color: style.color };
@@ -47,7 +47,7 @@ try {
     actionStyle.color,
     "Booking action label must remain visible",
   );
-  await page.getByRole("button", { name: "Choose a consultation" }).click();
+  await page.getByRole("button", { name: "Choose consultation" }).click();
   await page.getByRole("button", { name: /Discovery call/ }).click();
   await page.getByRole("radio", {name: "In-person consultation"}).check();
   const dates = page.getByLabel(/Choose a date/);
@@ -61,7 +61,7 @@ try {
     .waitFor();
   await page.getByRole("button", { name: "Try again" }).click();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
-  await page.getByRole("button", { name: "Choose a consultation" }).click();
+  await page.getByRole("button", { name: "Choose consultation" }).click();
   await page.getByRole("button", { name: /Strategy session/ }).click();
   await page.getByRole("button", { name: "Back", exact: false }).click();
   await page.getByRole("heading", { name: "Choose your consultation." }).waitFor();
