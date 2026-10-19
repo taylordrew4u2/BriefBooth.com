@@ -85,7 +85,7 @@ Database tests execute PostgreSQL booking logic and verify overlap rejection, in
 
 ## Boundaries
 
-No payment collection, reminders, generated video rooms, calendar sync, date-specific schedule overrides, or holiday exceptions. Consultants should only publish hours they can honor. The private management link is a capability: anyone holding it can view basic appointment details and cancel before the start. Keep it private.
+No payment collection, reminders, calendar sync, date-specific schedule overrides, or holiday exceptions. Automatic Zoom meeting creation is enabled for the connected 4u Digital account; additional consultants require Zoom distribution approval and can currently supply a meeting link manually. Consultants should only publish hours they can honor. The private management link is a capability: anyone holding it can view basic appointment details and cancel before the start. Keep it private.
 
 Basic abuse controls include validation, a form honeypot, and five bookings per email per consultant per hour. A larger public launch should add stronger bot protection. Free services' quotas remain in effect; do not enable automatic paid upgrades.
 
@@ -114,3 +114,11 @@ Questionnaire templates are available for business, marketing, career coaching, 
 Booking is free on BriefBooth. Studio → Consultations lets consultants select Cash App, Venmo, PayPal, Zelle, bank transfer, cash, or Other and save optional public instructions. Clients see “Negotiate with consultant” before confirming. Any fee is arranged directly; BriefBooth does not collect or verify payment.
 
 Apply `supabase/migrations/20261018200000_free_booking_preferences.sql` after the payment migrations for the current free-only release. See `PAYMENT-SETUP.md` for the paused integration status.
+
+## Approval and automatic Zoom — current live configuration
+
+Studio → Profile offers instant confirmation or consultant approval. Pending requests reserve the time and send request notifications to both parties. Approving in Studio → Bookings creates the Zoom meeting, then sends confirmation emails with the intake and meeting link. Declining releases the time and notifies the client. Cancelling releases the time; already-created Zoom meetings require manual removal, and cancellation emails are not implemented.
+
+4u Digital is published at https://briefbooth.com/book/4u-digital with the developer intake, approval required, a 30-minute first consultation via Zoom, and daily 09:00–20:00 America/New_York availability. Automatic Zoom authorization is currently restricted to this owner until Zoom approves broader distribution.
+
+Apply all dated migrations in order after the base schema when provisioning a new environment, including the Zoom and approval migrations. Keep Zoom credentials and tokens in Supabase Vault. The deployed Zoom callback handles OAuth; private scheduled workers create meetings and deliver emails every minute. Stripe remains paused.

@@ -72,3 +72,9 @@ Completed the published 4u Digital developer intake in the client UI, using an o
 Approved that request in the owner's studio Bookings tab. The client page automatically changed to confirmed and then displayed its newly generated Zoom link. Normal scheduled workers delivered both confirmation messages to the consultant and client-alias addresses; read both delivered bodies and verified identical Zoom links, intake answers, duration, and Eastern date/time. No worker was manually invoked. Cancelled the BriefBooth test appointment afterward to release availability. The generated Zoom test meeting remains for manual removal because the connection has create-only permission.
 
 No application fix was required for this flow. No paid plan, upgrade, payment, or additional service was enabled.
+
+## Wiring audit — October 19, 2026
+
+Reran database, custom intake, email-worker, paused-payment, Zoom and approval tests; lint, TypeScript/production build, and live Cloudflare route/asset/security-header checks all passed. Inspected signup/login/recovery callbacks and the studio/client database calls against the implemented endpoints. Live health inspection found both cron jobs active with 30 successful runs each over the preceding 30 minutes, ten recent email records accepted, and both generated Zoom jobs ready. The published 4u Digital profile retains approval mode and its five-question intake. No production changes were needed.
+
+Reviewed security advisories: private tables intentionally deny client access without RLS policies; public booking capability functions and owner-checked functions intentionally use restricted SECURITY DEFINER entry points, covered by access-control tests. Leaked-password protection remains disabled; no paid security upgrade was enabled. Updated README to reflect automatic Zoom/approval functionality and its distribution and cancellation limitations.
