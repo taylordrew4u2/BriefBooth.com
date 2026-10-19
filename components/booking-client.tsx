@@ -313,21 +313,21 @@ export default function Booking() {
                   {stage === 0 && (
                     <div className="intake-progress">
                       <div className="intake-progress-label"><span>{intakeStep === 0 ? "A friendly hello" : intakeStep === profile.intake_questions.length ? "Last question. You’ve got this." : "Your ideas are taking shape"}</span><strong>{intakeStep + 1} / {profile.intake_questions.length + 1}</strong></div>
-                      <progress aria-label="Questionnaire progress" value={intakeStep + 1} max={profile.intake_questions.length + 1}/>
+                      <progress aria-label="Questionnaire progress" aria-valuetext={`Question ${intakeStep + 1} of ${profile.intake_questions.length + 1}`} value={intakeStep + 1} max={profile.intake_questions.length + 1}/>
                     </div>
                   )}
                   <div className="question-chapter" aria-hidden="true" key={`${stage}-${intakeStep}`}>
                     <span className="chapter-symbol">{stage === 0 ? intakeStep === 0 ? "✳" : "✦" : stage === 1 ? "↗" : "◷"}</span>
                     <span>{stage === 0 ? intakeStep === 0 ? "NICE TO MEET YOU" : `A LITTLE ABOUT YOUR IDEAS · ${String(intakeStep).padStart(2, "0")}` : stage === 1 ? "MAKE IT YOURS" : "LET’S MAKE TIME"}</span>
                   </div>
-                  <h2 id="intake-step-title" ref={stepHeading} tabIndex={-1}>
+                  <h2 id="intake-step-title" aria-describedby={stage === 0 ? "intake-step-guidance" : undefined} ref={stepHeading} tabIndex={-1}>
                     {stage === 0
                       ? intakeStep === 0 ? "Let’s start with you." : profile.intake_questions[intakeStep - 1]?.label
                       : stage === 1
                         ? "Choose your consultation."
                         : "Find a time that works."}
                   </h2>
-                  <p className="section-subtitle">
+                  <p className="section-subtitle" id="intake-step-guidance">
                     {stage === 0
                       ? intakeStep === 0 ? "A few quick answers, then we’ll find a time. No account needed." : "One question at a time. A sentence or two is plenty."
                       : stage === 1
@@ -448,6 +448,7 @@ export default function Booking() {
                                   }
                                   aria-pressed={slot === s}
                                 >
+                                  {slot === s && <span aria-hidden="true">✓ </span>}
                                   {new Date(s).toLocaleTimeString(undefined, {
                                     hour: "numeric",
                                     minute: "2-digit",
@@ -529,11 +530,11 @@ export default function Booking() {
                         </div>}
                         {profile.intake_questions.filter((_, i) => i === intakeStep - 1).map(q => (
                           <label key={q.id}>
-                            Your answer <span className="field-help">{q.required ? "Required" : "Optional"}</span>
+                            Your answer <span id={`answer-help-${q.id}`} className="field-help">{q.required ? "Required answer" : "Optional — you can skip this question"}. Up to 1,500 characters.</span>
                             {q.type === "short" ? (
-                              <Input aria-labelledby="intake-step-title" name={"answer-" + q.id} value={answers[q.id] || ""} onChange={e=>setAnswers({...answers,[q.id]:e.target.value})} required={q.required} maxLength={1500} />
+                              <Input aria-labelledby="intake-step-title" aria-describedby={`answer-help-${q.id}`} name={"answer-" + q.id} value={answers[q.id] || ""} onChange={e=>setAnswers({...answers,[q.id]:e.target.value})} required={q.required} maxLength={1500} />
                             ) : (
-                              <Textarea aria-labelledby="intake-step-title" name={"answer-" + q.id} value={answers[q.id] || ""} onChange={e=>setAnswers({...answers,[q.id]:e.target.value})} required={q.required} maxLength={1500} rows={4} />
+                              <Textarea aria-labelledby="intake-step-title" aria-describedby={`answer-help-${q.id}`} name={"answer-" + q.id} value={answers[q.id] || ""} onChange={e=>setAnswers({...answers,[q.id]:e.target.value})} required={q.required} maxLength={1500} rows={4} />
                             )}
                           </label>
                         ))}

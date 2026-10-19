@@ -1884,3 +1884,52 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px
   .question-chapter { animation: none; }
   .booking-experience .form-submit,.booking-experience .service-option { transition: none; transform: none !important; }
 }
+
+/* Readability and keyboard access take priority over decorative treatments. */
+:where(a,button,input,textarea,select,summary,[tabindex]):focus-visible {
+  outline: 3px solid #084f9c !important;
+  outline-offset: 4px;
+}
+.booking-experience .booking-journey li { font-size: 14px; color: #4b5563; }
+.booking-experience .booking-journey li > span { width: 28px; height: 28px; }
+.booking-experience .booking-journey li[aria-current] > span,
+.booking-experience .chapter-symbol { background: #0963bf; }
+.booking-experience .section-subtitle,
+.booking-experience .consultant-headline,
+.booking-experience .consultant-bio,
+.booking-experience .consultant-bio-mobile,
+.booking-experience .intake-progress { font-size: 16px; line-height: 1.65; color: #444; }
+.booking-experience .privacy-note,
+.booking-experience .field-help,
+.booking-experience .booking-brand,
+.booking-experience .question-chapter { font-size: 14px; line-height: 1.6; color: #4b5563; }
+.booking-experience .question-chapter { letter-spacing: .5px; }
+.booking-experience .intake-answer-card label { font-size: 16px; }
+.booking-experience input:not([type=radio]),
+.booking-experience textarea,
+.booking-experience select { font-size: 16px; border-color: #718399; }
+.booking-experience input::placeholder,
+.booking-experience textarea::placeholder { color: #596579; opacity: 1; }
+.booking-experience .form-submit { background: #0963bf !important; border-color: #0963bf !important; box-shadow: none; }
+.booking-experience .form-submit:hover:not(:disabled) { background: #084f9c !important; transform: none; box-shadow: none; }
+.booking-experience .back-button,
+.booking-experience .text-link,
+.booking-experience .time-option { min-height: 44px; min-width: 44px; padding: 10px 12px; font-size: 16px; }
+.booking-experience .back-button,.booking-experience .text-link { text-decoration: underline; text-underline-offset: 4px; }
+.booking-experience .time-option { border-color: #718399 !important; }
+.booking-experience .time-option.active { border: 2px solid #084f9c !important; font-weight: 700; }
+.booking-experience .service-option:hover { transform: none; }
+.booking-experience .service-option span { font-size: 14px; }
+.booking-experience .question-chapter { animation: none; }
+@media (max-width:700px) {
+  .booking-experience .booking-journey { flex-wrap: wrap; }
+  .booking-experience .booking-journey li { font-size: 13px; flex: 1 1 70px; }
+  .booking-experience .intake-progress-label { font-size: 14px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  *,*::before,*::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
+}
+@media (forced-colors:active) {
+  .booking-experience .time-option.active,
+  .booking-experience .booking-journey li[aria-current] > span { outline: 2px solid Highlight; }
+}
