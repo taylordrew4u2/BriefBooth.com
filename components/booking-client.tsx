@@ -1,9 +1,6 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
-import { PriceBreakdown } from "./price-breakdown";
-import { money, priceBreakdown } from "@/lib/pricing";
-import { paymentAction } from "@/lib/payments";
 import { Logo } from "@/components/site-header";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -195,13 +192,6 @@ export default function Booking() {
         p_answers: answers,
         p_meeting_mode: meetingMode,
       };
-      if (service!.amount_cents > 0) {
-        const result = await paymentAction("checkout", { booking, expected_total: priceBreakdown(service!.amount_cents).total });
-        const checkout = new URL(result.url);
-        if (checkout.protocol !== "https:" || checkout.hostname !== "checkout.stripe.com") throw new Error("Invalid checkout link.");
-        window.location.assign(checkout.href);
-        return;
-      }
       const { data, error } = await db().rpc("book_consultation", booking);
       if (error) throw error;
       window.location.assign(
@@ -350,7 +340,7 @@ export default function Booking() {
                             <div>
                               <h3>{s.title}</h3>
                               <p>{s.description}</p>
-                              <span>{s.duration} min · {s.amount_cents ? money(priceBreakdown(s.amount_cents).total) + " total" : "Free"}</span>
+                              <span>{s.duration} min · Free to book</span>
                             </div>
                             <span className="service-arrow" aria-hidden="true">
                               ↗
@@ -465,7 +455,12 @@ export default function Booking() {
                                     : "Zoom"}
                                 </small>
                               </div>
-                              <PriceBreakdown amount={service?.amount_cents || 0} />
+                              <div className="inset-form">
+                                <h3>Negotiate with consultant</h3>
+                                <p>Free to book. No payment is collected here. Agree on any consultation fee directly with your consultant.</p>
+                                {!!profile.payment_methods?.length && <p><strong>Accepted methods:</strong> {profile.payment_methods.join(", ")}</p>}
+                                {profile.payment_notes && <p style={{whiteSpace: "pre-wrap"}}>{profile.payment_notes}</p>}
+                              </div>
                               <Button
                                 className="form-submit"
                                 onClick={submit}
@@ -475,7 +470,7 @@ export default function Booking() {
                                   ? "Confirming…"
                                   : demo
                                     ? "Try demo booking"
-                                    : service?.amount_cents ? "Continue to secure checkout" : "Confirm booking"}{" "}
+                                    : "Confirm booking"}{" "}
                                 <span aria-hidden="true">→</span>
                               </Button>
                             </>

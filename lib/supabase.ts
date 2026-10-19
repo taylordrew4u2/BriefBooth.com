@@ -27,6 +27,8 @@ export type Profile = {
   in_person_address: string;
   published: boolean;
   intake_questions: IntakeQuestion[];
+  payment_methods: string[];
+  payment_notes: string;
 };
 export type Service = {
   id: string;
@@ -49,6 +51,8 @@ export const demoProfile: Profile = {
   in_person_address: "",
   published: true,
   intake_questions: defaultQuestions,
+  payment_methods: ["Cash App", "Venmo"],
+  payment_notes: "We’ll agree on any consultation fee together before we meet.",
 };
 export const demoServices: Service[] = [
   {

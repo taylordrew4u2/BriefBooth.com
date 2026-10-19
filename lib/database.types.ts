@@ -9,6 +9,8 @@ type ProfileRow = {
   timezone: string;
   published: boolean;
   intake_questions: IntakeQuestion[];
+  payment_methods: string[];
+  payment_notes: string;
 };
 type ServiceRow = {
   id: string;

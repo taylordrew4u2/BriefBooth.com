@@ -108,3 +108,9 @@ Each consultant has `/book/YOUR_SLUG`, suitable for a website button or a direct
 Answers are submitted when the booking is confirmed, saved with question labels in the private booking record, and included in both confirmation emails. Unfinished questionnaires are not saved as leads. The server validates required answers and rejects outdated question IDs; the legacy booking endpoint is no longer public.
 
 Questionnaire templates are available for business, marketing, career coaching, technology, design/branding, operations, leadership, and events. Preview four questions, replace the draft or append them (up to 10 total), and undo template changes before saving. Existing bookings retain their original answers. Templates add no external service or cost.
+
+### Direct payment preferences (Stripe paused)
+
+Booking is free on BriefBooth. Studio → Consultations lets consultants select Cash App, Venmo, PayPal, Zelle, bank transfer, cash, or Other and save optional public instructions. Clients see “Negotiate with consultant” before confirming. Any fee is arranged directly; BriefBooth does not collect or verify payment.
+
+Apply `supabase/migrations/20261018200000_free_booking_preferences.sql` after the payment migrations for the current free-only release. See `PAYMENT-SETUP.md` for the paused integration status.

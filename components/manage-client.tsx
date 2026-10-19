@@ -4,8 +4,6 @@ import Link from "next/link";
 import { Logo } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { db } from "@/lib/supabase";
-import { paymentAction } from "@/lib/payments";
-import { PriceBreakdown } from "./price-breakdown";
 import { calendarFile } from "@/lib/calendar";
 type Details = {
   client_name: string;
@@ -30,15 +28,10 @@ export default function Manage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
-  const [payment, setPayment] = useState<{amount:number;total:number;paid:boolean;status:string;url:string|null}|null>(null);
   useEffect(() => {
     if (!token) return;
     async function load() {
       try {
-        try {
-          const result = await paymentAction("status", {token});
-          setPayment(result.payment);
-        } catch { /* Free booking details remain available independently of Stripe. */ }
         const { data, error } = await db().rpc("booking_details", {
           p_token: token!,
         });
@@ -110,14 +103,7 @@ export default function Manage() {
               </span>
               <small>{Intl.DateTimeFormat().resolvedOptions().timeZone}</small>
             </div>
-            {payment && <PriceBreakdown amount={payment.amount} total={payment.total} />}
-            {["pending_payment","payment_processing"].includes(booking.status) && <div className="inset-form">
-              <p>Your consultation is confirmed only after payment succeeds. Confirmation emails will follow.</p>
-              {payment?.url && <a className="button" href={payment.url}>Return to secure checkout ↗</a>}
-              <Button variant="outline" onClick={()=>window.location.reload()}>Check payment status</Button>
-              {booking.status === "pending_payment" && <Button variant="outline" disabled={busy} onClick={async()=>{setBusy(true);try{await paymentAction("status",{token,cancel:true});window.location.reload();}catch(e){setMessage(e instanceof Error?e.message:"Unable to cancel checkout.");setBusy(false);}}}>Cancel checkout and release time</Button>}
-            </div>}
-            {payment?.paid && <p className="field-help">Payment received. Cancelling the appointment does not automatically refund payment. Contact your consultant about refunds.</p>}
+            <div className="inset-form"><h3>Negotiate with consultant</h3><p>No payment was collected through BriefBooth. Arrange any consultation fee and payment method directly with your consultant.</p></div>
             {booking.status === "confirmed" && (
               <>
                 <p>
