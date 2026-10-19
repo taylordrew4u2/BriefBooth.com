@@ -549,7 +549,7 @@ export default function Studio() {
                   <div className="empty-state">
                     <h3>Your expertise goes here.</h3>
                     <p>
-                      Save your profile first, then add your first consultation.
+                      {savedProfile ? "Add your first consultation so clients can choose what to book." : "Save your profile first, then add your first consultation."}
                     </p>
                   </div>
                 ) : (
