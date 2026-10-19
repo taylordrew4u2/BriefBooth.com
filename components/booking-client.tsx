@@ -1,6 +1,9 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
+import { paymentAction, stripeRedirect } from "@/lib/payments";
+import { PriceBreakdown } from "@/components/price-breakdown";
+import { priceBreakdown, money } from "@/lib/pricing";
 import { ProfileAvatar } from "@/components/profile-avatar";
 import { Logo } from "@/components/site-header";
 import { Input } from "@/components/ui/input";
@@ -198,6 +201,11 @@ export default function Booking() {
         p_answers: answers,
         p_meeting_mode: meetingMode,
       };
+      if (service.amount_cents > 0) {
+        const result = await paymentAction("checkout", { booking, expected_total: priceBreakdown(service.amount_cents).total });
+        stripeRedirect(result.url);
+        return;
+      }
       const { data, error } = await db().rpc("book_consultation", booking);
       if (error) throw error;
       if (typeof data !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data)) throw new Error("We couldn’t verify the booking response. Please try again; your request will not be duplicated.");
@@ -357,7 +365,7 @@ export default function Booking() {
                             <div>
                               <h3>{s.title}</h3>
                               <p>{s.description}</p>
-                              <span>{s.duration} min · Free to book</span>
+                              <span>{s.duration} min · {s.amount_cents ? money(priceBreakdown(s.amount_cents).total) + " total" : "Free to book"}</span>
                             </div>
                             <span className="service-arrow" aria-hidden="true">
                               ↗
@@ -477,12 +485,15 @@ export default function Booking() {
                                     : "Zoom"}
                                 </small>
                               </div>
-                              <div className="inset-form">
+                              {service && service.amount_cents > 0 ? <div className="inset-form">
+                                <PriceBreakdown amount={service.amount_cents} />
+                                <p>{profile.booking_mode === "approval" ? "Pay now to send your request. Your consultant must still approve it before the meeting is confirmed. If declined, contact the consultant for a refund." : "Your booking is confirmed after Stripe verifies payment."} Cancellations do not automatically refund payments. Your consultant handles refunds.</p>
+                              </div> : <div className="inset-form">
                                 <h3>Negotiate with consultant</h3>
                                 <p>{profile.booking_mode === "approval" ? "Your consultant must approve this request before the meeting is confirmed. " : ""}Free to book. No payment is collected here. Agree on any consultation fee directly with your consultant.</p>
                                 {!!profile.payment_methods?.length && <p><strong>Accepted methods:</strong> {profile.payment_methods.join(", ")}</p>}
                                 {profile.payment_notes && <p style={{whiteSpace: "pre-wrap"}}>{profile.payment_notes}</p>}
-                              </div>
+                              </div>}
                               <Button
                                 className="form-submit"
                                 onClick={submit}
@@ -492,7 +503,7 @@ export default function Booking() {
                                   ? profile.booking_mode === "approval" ? "Sending request…" : "Confirming…"
                                   : demo
                                     ? "Try demo booking"
-                                    : profile.booking_mode === "approval" ? "Send consultation request" : "Confirm booking"}{" "}
+                                    : service && service.amount_cents > 0 ? "Continue to secure payment" : profile.booking_mode === "approval" ? "Send consultation request" : "Confirm booking"}{" "}
                                 <span aria-hidden="true">→</span>
                               </Button>
                             </>

@@ -8,3 +8,10 @@ export async function paymentAction(action: string, payload: Record<string, unkn
   if (data?.error) throw new Error(data.error);
   return data;
 }
+
+export function stripeRedirect(value: unknown) {
+  if (typeof value !== "string") throw new Error("Invalid Stripe response.");
+  const url = new URL(value);
+  if (url.protocol !== "https:" || !["checkout.stripe.com", "connect.stripe.com"].includes(url.hostname) || url.username || url.password) throw new Error("Invalid Stripe link.");
+  window.location.assign(url.href);
+}

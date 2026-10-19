@@ -5,6 +5,8 @@ import { Logo } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { db } from "@/lib/supabase";
 import { pollSequentially } from "@/lib/polling";
+import { paymentAction, stripeRedirect } from "@/lib/payments";
+import { PriceBreakdown } from "./price-breakdown";
 import { calendarFile } from "@/lib/calendar";
 type Details = {
   client_name: string;
@@ -30,6 +32,14 @@ export default function Manage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  const [payment, setPayment] = useState<{amount:number;total:number;paid:boolean;status:string;url:string|null}|null>(null);
+  const [paymentError, setPaymentError] = useState("");
+  useEffect(() => {
+    if (!token) return;
+    return pollSequentially(async () => paymentAction("status", {token}), result => {
+      setPayment(result.payment); setPaymentError("");
+    }, () => setPaymentError("Payment status could not be verified. If you paid, do not pay again; refresh this page or contact your consultant."));
+  }, [token]);
   useEffect(() => {
     if (!token || busy) return;
     return pollSequentially(async () => {
@@ -103,7 +113,13 @@ export default function Manage() {
               <small>{Intl.DateTimeFormat().resolvedOptions().timeZone}</small>
             </div>
             {booking.status === "pending_approval" && <p>Your consultant will review your intake and requested time. Meeting details will be emailed after approval. This is not a confirmed appointment.</p>}
-            <div className="inset-form"><h3>Negotiate with consultant</h3><p>No payment was collected through BriefBooth. Arrange any consultation fee and payment method directly with your consultant.</p></div>
+            {payment ? <div className="inset-form">
+              <h3>{payment.paid ? "Payment received" : "Your payment"}</h3>
+              <PriceBreakdown amount={payment.amount} total={payment.total} />
+              {payment.url && !payment.paid && <Button onClick={() => { try { stripeRedirect(payment.url); } catch { setMessage("Unable to open checkout."); } }}>Continue secure checkout</Button>}
+              <p>Cancellation or decline does not automatically issue a refund. Contact your consultant about refunds.</p>
+            </div> : !paymentError && <div className="inset-form"><h3>Arrange payment directly</h3><p>No online payment is attached to this booking.</p></div>}
+            {paymentError && <p role="status">{paymentError}</p>}
             {booking.status === "pending_approval" && <Button disabled={busy} onClick={cancel}>Cancel request</Button>}
             {booking.status === "confirmed" && (
               <>

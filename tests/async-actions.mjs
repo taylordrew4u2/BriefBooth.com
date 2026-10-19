@@ -11,7 +11,7 @@ function handler(file, name, context) {
   function visit(node) { if(ts.isFunctionDeclaration(node) && node.name?.text === name) found=node; ts.forEachChild(node,visit); }
   visit(source); assert(found, `Missing handler ${name}`);
   const js=ts.transpileModule(found.getText(source),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
-  return vm.runInNewContext(`${js}; ${name}`,context);
+  return vm.runInNewContext(`${js.replace(/^export /gm, "")}; ${name}`,context);
 }
 const cases=[['components/manage-client.tsx','cancel'],['app/studio/page.tsx','addService'],['app/studio/page.tsx','saveHours'],['app/account/page.tsx','savePassword']];
 for(const [file,name] of cases) {
@@ -134,3 +134,21 @@ for(const selection of [{service:null,day:''},{service:{id:'service'},day:''}]) 
   assert.equal(slots[0].length,0); assert.deepEqual(selected,['']);
 }
 console.log('PASS clearing consultation/date resets stale slots and releases loading');
+for (const outcome of ['success','reject']) {
+  const requests=[], routes=[], messages=[];
+  let resolve, reject;
+  const context={submittingRequest:{current:false},busy:false,demo:false,service:{id:'service',amount_cents:500},slot:'2026-11-01T15:00:00Z',intake:{name:'Client',email:'client@example.com'},meetingMode:'zoom',answers:{},bookingRequest:{current:null},crypto:{randomUUID:()=>validToken},Error,
+    setSubmitting:()=>{},setMessage:v=>messages.push(v),priceBreakdown:()=>({total:546}),stripeRedirect:url=>routes.push(url),
+    paymentAction:(_action,args)=>{requests.push(args);return new Promise((yes,no)=>{resolve=yes;reject=no;});},db:()=>{throw Error('Paid booking bypassed checkout');}};
+  const submit=handler('components/booking-client.tsx','submit',context);
+  const pending=submit();await submit();assert.equal(requests.length,1);
+  if(outcome==='reject')reject(Error('offline'));else resolve({url:'https://checkout.stripe.com/c/pay/test'});
+  await pending;assert.equal(context.submittingRequest.current,false);assert.equal(requests[0].expected_total,546);
+  assert.equal(routes.length,outcome==='success'?1:0);
+  if(outcome==='reject'){const retry=submit();resolve({url:'https://checkout.stripe.com/c/pay/test'});await retry;assert.equal(requests[0].booking.p_request,requests[1].booking.p_request);}
+}
+const redirectRoutes=[];
+const redirect=handler('lib/payments.ts','stripeRedirect',{URL,Error,window:{location:{assign:url=>redirectRoutes.push(url)}}});
+for(const bad of [null,'javascript:alert(1)','https://evil.example/','https://stripe.com.evil.example/','https://user@checkout.stripe.com/'])assert.throws(()=>redirect(bad));
+redirect('https://checkout.stripe.com/c/pay/example');assert.equal(redirectRoutes.length,1);
+console.log('PASS paid checkout amount, rapid-click guard, retry identity and Stripe-only redirects');

@@ -1,0 +1,30 @@
+# Optional Stripe payments — October 19, 2026
+
+## Implemented
+
+- Clean Portal Studio is the approved platform account; consultants connect their own US Stripe merchant accounts.
+- Direct charges, full Stripe dashboards, Stripe collecting fees and bearing negative-balance responsibility. No BriefBooth commission or subscription is added.
+- Consultation amounts remain $0 until a consultant explicitly adds a paid service. Publishing paid services requires an active live connected account and the server activation flag.
+- Checkout displays the consultation amount, included estimated processing, and total. The estimate uses standard US domestic card pricing, 2.9% + $0.30; other methods/cards and custom pricing can differ. Sources: https://stripe.com/pricing and https://stripe.com/connect/pricing.
+- Hosted Checkout handles card data. Signed webhook verification and server-side session retrieval drive settlement; browser return is not proof of payment.
+- Request IDs, amount/account/environment validation, slot holds and idempotent settlement prevent duplicate fulfillment.
+- Approval-required paid bookings collect payment before review. Approval mode is snapshotted when the booking is made. Payment transitions to pending approval; only consultant approval triggers Zoom/confirmation. UI explains this before checkout.
+- Refunds are managed by the consultant in Stripe. Cancelling or declining does not automatically refund. Both client and admin surfaces state this.
+
+## Activation requirements
+
+Connect final details were submitted in the Stripe dashboard; review was in progress. Live connected-account creation was disabled during that review.
+
+The existing live webhook is `we_1UREhiLON2mfUoQ25QroEs0p`, for `/functions/v1/payments/webhook`, with the four Checkout completion/success/failure/expiry events. It was disabled when Stripe was paused. Preserve unrelated endpoints.
+
+Prepared a restricted key form named `BriefBooth live payments`; creation and secure entry require user handoff. Store it in Vault as `briefbooth_stripe_production_key`. Keep old sandbox entries intact. Store the matching live endpoint signing secret as `briefbooth_stripe_production_webhook_secret`.
+
+Before activating: verify Stripe review approval, restricted-key access to Accounts v2 merchant creation/retrieval and account links, and connected Checkout creation/read/expiry. Enable the existing webhook and validate signed delivery. Set `briefbooth_stripe_live=true` and `briefbooth_stripe_enabled=true` only after the credentials and endpoint are ready, then redeploy the function (configuration is loaded at cold start). Restore the existing reconciliation cron from `supabase/payment-reconciliation.sql`, checking for an existing job first. Complete consultant onboarding and verify merchant card-payments capability before offering a paid service.
+
+Do not report live payments as working until activation and provider verification finish. No real charge was made in this session. Do not invent a successful payment test.
+
+## Validation
+
+Production build, lint, full existing regression suite and new local payment/approval tests pass. New checks cover approval snapshot across profile changes, no Zoom before approval, exactly one Zoom job after payment replay, sandbox-to-live account mapping, publishing gate, checkout duplicate-click guard, expected totals, stable retry IDs and Stripe-only redirect URLs. All test payment records are local fixtures, not live Stripe transactions.
+
+Cloudflare and Supabase remain on the existing free setup; Vercel and unrelated projects are unchanged. Stripe transaction fees are the user-approved exception.

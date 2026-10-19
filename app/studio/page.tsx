@@ -1,4 +1,7 @@
 "use client";
+import { PriceBreakdown } from "@/components/price-breakdown";
+import { paymentAction, stripeRedirect } from "@/lib/payments";
+import { money, priceBreakdown } from "@/lib/pricing";
 import { ZoomConnection } from "@/components/zoom-connection";
 import { IntakeTemplatePicker } from "@/components/intake-template-picker";
 import { defaultQuestions } from "@/lib/intake";
@@ -60,6 +63,19 @@ export default function Studio() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [adding, setAdding] = useState(false);
+  const [amount, setAmount] = useState("0");
+  const [paymentStatus, setPaymentStatus] = useState("Check your connection or connect your own Stripe account to accept payments.");
+  async function stripeAction(action: "account" | "connect") {
+    if (busy) return;
+    setBusy(true); setMessage("");
+    try {
+      const result = await paymentAction(action);
+      if (result.url) stripeRedirect(result.url);
+      else if (typeof result.ready === "boolean") setPaymentStatus(result.ready && result.live ? "Stripe is ready for live payments." : "Stripe setup is incomplete. Free bookings are still available.");
+      else throw new Error("We couldn’t verify your Stripe connection.");
+    } catch (e) { setMessage(e instanceof Error ? e.message : "Unable to connect Stripe."); }
+    finally { setBusy(false); }
+  }
   const [bookingFilter, setBookingFilter] = useState("upcoming");
   const [search, setSearch] = useState("");
   const [now, setNow] = useState(() => Date.now());
@@ -81,6 +97,7 @@ export default function Studio() {
         }
         setSiteOrigin(window.location.origin);
         setUid(user.id);
+        if (new URLSearchParams(window.location.search).has("stripe")) setTab("consultations");
         const results = await Promise.all([
           db().from("profiles").select("*").eq("id", user.id).maybeSingle(),
           db()
@@ -227,7 +244,7 @@ export default function Studio() {
           title: String(f.get("title")),
           description: String(f.get("description")),
           duration: Number(f.get("duration")),
-          amount_cents: 0,
+          amount_cents: Math.round(Number(f.get("amount") || 0) * 100),
           meeting_modes: String(f.get("meeting_modes")).split(","),
         })
         .select()
@@ -595,9 +612,17 @@ export default function Studio() {
                     {adding ? "Close form" : "+ Add consultation"}
                   </Button>
                 </div>
+                <div className="inset-form">
+                  <h3>Accept payments with Stripe</h3>
+                  <p role="status">{paymentStatus}</p>
+                  <p>Connect your own Stripe account. BriefBooth adds no subscription or commission. Stripe processing fees apply. US consultants and USD payments are supported.</p>
+                  <p>For approval-required consultations, payment is collected before review. Approve the request to create the meeting. If you decline or cancel a paid booking, issue any refund from your Stripe dashboard.</p>
+                  <div className="form-row"><Button disabled={busy} onClick={() => stripeAction("connect")}>Connect Stripe</Button><Button variant="outline" disabled={busy} onClick={() => stripeAction("account")}>Check connection</Button></div>
+                  <a className="text-link" href="https://dashboard.stripe.com/" target="_blank" rel="noopener noreferrer">Stripe dashboard — requirements, refunds and payouts ↗</a>
+                </div>
                 <form className="inset-form" onSubmit={savePaymentPreferences}>
                   <h3>Arrange payment directly</h3>
-                  <p>Booking on BriefBooth is free. If you charge for your time, agree on the price and payment with your client directly.</p>
+                  <p>For consultations priced at $0, clients can book without checkout and arrange any fee directly with you.</p>
                   <fieldset>
                     <legend>Payment methods you accept</legend>
                     <div className="form-row">
@@ -627,6 +652,11 @@ export default function Studio() {
                       Description
                       <Textarea name="description" maxLength={500} rows={2} />
                     </label>
+                    <label>Consultation amount (USD)
+                      <Input name="amount" type="number" min="0" max="99999.99" step="0.01" required value={amount} onChange={e => setAmount(e.target.value)} />
+                      <span className="field-help">$0 skips checkout. Paid consultations require a connected Stripe account and at least $0.50. Estimated processing is included in the client total below.</span>
+                    </label>
+                    <PriceBreakdown amount={Math.round(Math.max(0, Math.min(99999.99, Number(amount) || 0)) * 100)} />
                     <label>
                       Duration
                       <select name="duration" defaultValue="30">
@@ -669,7 +699,7 @@ export default function Studio() {
                         <h3>{s.title}</h3>
                         <p>{s.description}</p>
                         <span>
-                          Free to book · {s.duration} minutes ·{" "}
+                          {s.amount_cents ? money(priceBreakdown(s.amount_cents).total) + " total" : "Free to book"} · {s.duration} minutes ·{" "}
                           {s.meeting_modes
                             .map((mode) =>
                               mode === "in_person" ? "In person" : "Zoom",

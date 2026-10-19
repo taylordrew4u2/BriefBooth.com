@@ -2,8 +2,11 @@ import Stripe from "npm:stripe@22.6.0";
 import { createClient } from "npm:@supabase/supabase-js@2.117.3";
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-const { data: config, error: configError } = await db.rpc("payments_config");
-if (configError) throw new Error("Payment configuration unavailable.");
+const { data: loadedConfig, error: configError } = await db.rpc("payments_config");
+const config = configError ? {} : (loadedConfig || {});
+config.secret_key = config.production_key || config.secret_key;
+config.webhook_secret = config.production_webhook_secret || config.webhook_secret;
+const enabled = config.enabled === "true" && config.live === "true" && /^[sr]k_live_/.test(config.secret_key || "") && !!config.webhook_secret;
 const origin = config.origin || "https://briefbooth.com";
 const live = config.live === "true";
 const stripe = new Stripe(config.secret_key || "missing", { apiVersion: "2026-08-26.dahlia", maxNetworkRetries: 2 });
@@ -43,6 +46,7 @@ Deno.serve(async req => {
     const raw = await req.text();
     if (raw.length > 90000) return json({ error: "Request too large." }, 413);
     if (new URL(req.url).pathname.endsWith("/webhook")) {
+      if (!enabled) return json({ error: "Live payments are not activated yet." }, 503);
       let event: Stripe.Event;
       try { event = await stripe.webhooks.constructEventAsync(raw, req.headers.get("stripe-signature") || "", config.webhook_secret, undefined, Stripe.createSubtleCryptoProvider()); }
       catch { return json({ error: "Invalid webhook signature." }, 400); }
@@ -57,6 +61,7 @@ Deno.serve(async req => {
     }
     if (requestOrigin && !allowed.has(requestOrigin)) return json({ error: "Origin not allowed." }, 403);
     const body = JSON.parse(raw);
+    if (body.action !== "status" && !enabled) return json({ error: "Live Stripe setup is awaiting activation. Free bookings remain available." }, 503);
     if (body.action === "reconcile") {
       if (!config.cron_secret || req.headers.get("authorization") !== "Bearer " + config.cron_secret) return json({ error: "Unauthorized." }, 401);
       let checked = 0;
@@ -110,6 +115,7 @@ Deno.serve(async req => {
       if (!uuid.test(body.token || "")) return json({ error: "Invalid booking link." }, 400);
       const p = await rpc("payments_lookup", { p_token: body.token });
       if (!p) return json({ payment: null });
+      if (!enabled || p.livemode !== live) throw new Error("Payment status needs consultant review. Do not pay again.");
       let session = p.session_id ? await readSession(p.session_id, p.account_id) : null;
       if (session) {
         await settle(session, p.account_id);
@@ -129,7 +135,7 @@ Deno.serve(async req => {
     const { data: profile } = await db.from("profiles").select("id,name").eq("id", user.id).single();
     if (!profile) throw new Error("Save your profile first.");
     let a = await account(user.id);
-    if (a && a.livemode !== live) throw new Error("Your payment account belongs to another environment. Contact support.");
+    if (a && a.livemode !== live) a = null;
     if (body.action === "account") return json({ connected: !!a, ready: a ? await syncAccount(user.id, a.account_id) : false, live });
     if (!a) {
       const created = await stripe.v2.core.accounts.create({ contact_email: user.email, display_name: profile.name, dashboard: "full", identity: { country: "us" }, defaults: { responsibilities: { fees_collector: "stripe", losses_collector: "stripe" } }, configuration: { merchant: { capabilities: { card_payments: { requested: true } } } } }, { idempotencyKey: `briefbooth-account-${user.id}` });
