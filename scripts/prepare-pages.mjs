@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync } from 'node:fs';
+import { copyFileSync, existsSync, writeFileSync } from 'node:fs';
 // Keep rewrite targets outside their source prefixes. Pages rejects targets
 // such as /book/demo/index.html as a potential canonical-URL redirect loop.
 for (const [source, target] of [
@@ -8,3 +8,6 @@ for (const [source, target] of [
   if (!existsSync(source)) throw new Error(`Missing static route: ${source}`);
   copyFileSync(source, target);
 }
+
+copyFileSync('scripts/zoom-gateway.js','out/_worker.js');
+writeFileSync('out/_routes.json',JSON.stringify({version:1,include:['/api/zoom/*'],exclude:[]}));

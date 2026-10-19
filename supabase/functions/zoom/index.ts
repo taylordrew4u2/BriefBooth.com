@@ -25,7 +25,7 @@ Deno.serve(async req=>{
  const code=url.searchParams.get('code');
  if(!code||url.searchParams.has('error')) return redirect('cancelled');
  const config=await rpc('zoom_environment_config',{p_environment:context.environment});
- const res=await fetch('https://zoom.us/oauth/token',{method:'POST',headers:{Authorization:'Basic '+btoa(config.client_id+':'+config.client_secret),'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:callback}),signal:AbortSignal.timeout(10000)});
+ const res=await fetch('https://zoom.us/oauth/token',{method:'POST',headers:{Authorization:'Basic '+btoa(config.client_id+':'+config.client_secret),'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:context.environment==='production'?'https://briefbooth.com/api/zoom/callback':callback}),signal:AbortSignal.timeout(10000)});
  if(!res.ok) return redirect('failed');
  const tokens=await res.json();
  if(!String(tokens.scope||'').split(' ').includes('meeting:write:meeting')) return redirect('scope');

@@ -30,8 +30,8 @@ Removal: Remove BriefBooth from Zoom Marketplace → Manage → Added Apps. Exis
 1. DONE: Operator 4u Digital and support admin@customtechbuilt4u.com confirmed. Published /privacy/, /terms/, /support/ and /zoom/ with actual retention and manual deletion practices.
 2. Supply BriefBooth app icon, category and company information; complete Zoom's EU/trader declarations truthfully with the owner. These cannot be inferred from a display name.
 3. DONE: Production contacts, meeting-creation scope, strict callback matching, listing text, Scheduling category, unlisted distribution and public URLs are saved. Production callback is the Supabase `/functions/v1/zoom/callback` endpoint.
-4. Handler and cleanup deployed in Edge Function v3. Local tests cover signed challenges, invalid signatures, stale requests, wrong client IDs, delayed/duplicate events, token deletion, link redaction and consultant isolation. Still requires production webhook secret and Zoom validation; actual public deauthorization has not been exercised.
-5. DONE: Per-connection and OAuth-state environments are deployed, and the meeting worker refreshes each connection with its own environment credentials. Production Vault credentials are still pending; do not replace development credentials. Tests cover existing-owner preservation, production state binding, refresh preservation and credential isolation.
+4. Handler and cleanup deployed in Edge Function v3. Local tests cover signed challenges, invalid signatures, stale requests, wrong client IDs, delayed/duplicate events, token deletion, link redaction and consultant isolation. Production webhook secret is stored and a signed challenge against the deployed endpoint passed (HTTP 200). Actual public deauthorization has not been exercised.
+5. DONE: Per-connection and OAuth-state environments are deployed, and the meeting worker refreshes each connection with its own environment credentials. Production Vault credentials are saved; do not replace development credentials. Tests cover existing-owner preservation, production state binding, refresh preservation and credential isolation.
 6. Provide review test instructions and any requested demo/account. Submit for Zoom's functional/security review; outside-account distribution requires its approval.
 7. After approval, enable the public production flow, verify two independently owned consultant accounts, and retain the owner's working connection throughout migration.
 
@@ -39,8 +39,20 @@ No review approval, external-account authorization, or production cutover has be
 
 ## Deployment verification — October 19, 2026
 
-Small-avatar feature and the 3,190-byte 4u Digital logo are live. Support/privacy/terms/Zoom guide are deployed on Cloudflare Pages; all four routes return HTTP 200. Lint, static build and production Pages route checks passed. No paid subscription was selected. Public Zoom activation remains off. EU release choice is awaiting the owner’s reply; no business identity, banking details or security certifications have been invented.
+Small-avatar feature and the 3,190-byte 4u Digital logo are live. Support/privacy/terms/Zoom guide are deployed on Cloudflare Pages; all four routes return HTTP 200. Lint, static build and production Pages route checks passed. No paid subscription was selected. Public Zoom activation remains off. The owner selected an outside-EU release; no business identity, banking details or security certifications have been invented.
 
 Environment-isolation migration and Zoom Edge Function v2 are deployed. Live 4u Digital connection remains ready=true in development; public_enabled=false. Invalid OAuth state returns the expected safe expired redirect. `node tests/zoom.mjs` passes including isolation regressions. No new authorization, test meeting or email was created during this verification.
 
-The owner approved user:read:user; the production scope is saved alongside meeting:write:meeting. The production callback fetches /users/me and retains only its ID. Production secrets remain unset, so the webhook returns 503 without processing requests. The owner’s development connection remains ready. Awaiting authorization to transfer existing production secrets to Supabase Vault and the EU release choice.
+The owner approved user:read:user; the production scope is saved alongside meeting:write:meeting. The production callback fetches /users/me and retains only its ID. Production secrets are now stored in Vault; a valid signed endpoint challenge returns HTTP 200. The owner’s development connection remains ready. The owner authorized credential transfer and an outside-EU release; both are completed.
+
+Zoom production scopes and description are verified saved. EU availability is unchecked and the app remains Unlisted. The production deauthorization endpoint was entered in Basic information. Submission is still pending the remaining listing/security review requirements; public_enabled remains false.
+
+Review preparation: app icon (light/dark), 1200×780 booking-demo gallery, architecture diagram and technical overview uploaded. Technical checklist reached Overview 5/5 and Security 3/3. SSDLC, SAST/DAST and third-party penetration-testing answers are No (no reports claimed). TLS 1.1 handshakes were rejected by briefbooth.com, briefbooth.pages.dev, Supabase, zoom.us, api.zoom.us and api.brevo.com. Privacy-rights acknowledgment checked against the published policy.
+
+## Ready-for-submission checkpoint
+
+Zoom shows Ready for submission. briefbooth.com is VERIFIED via the unchanged public HTML verification file. Production OAuth now uses https://briefbooth.com/api/zoom/callback and deauthorization uses https://briefbooth.com/api/zoom/deauthorize. The Cloudflare Pages gateway forwards only those two routes to the existing Supabase function, preserving signed payloads without forwarding browser cookies or authorization headers. The development OAuth callback is unchanged. Edge Function v4 and migration 20261019060000 are deployed.
+
+Production deployment: Cloudflare Success confirmed, static Pages checks pass, expired OAuth callback returns 303, unsigned webhook returns 401, and a real signed challenge through the custom domain returns HTTP 200 with the correct HMAC response. The worker runs only on /api/zoom/*; static routes remain outside it. No paid plan was added.
+
+Reviewer notes, free signup URL and manual activation are saved. Legal agreement/accuracy checkboxes are unchecked pending owner confirmation. Submission has NOT been sent. Reviewer production access still needs coordination: the public authorization gate remains off, and the reviewer notes explicitly ask reviewers to contact support with their account email. This is not a claim that all consultants can authorize yet.
