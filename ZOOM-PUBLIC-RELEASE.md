@@ -27,12 +27,18 @@ Removal: Remove BriefBooth from Zoom Marketplace → Manage → Added Apps. Exis
 
 ## Remaining requirements
 
-1. Confirm public support address and legal operator. Prepare and obtain owner approval for public privacy/terms pages (including actual retention/deletion practices and rights contact). Publish Zoom installation/use/removal documentation and support page.
+1. DONE: Operator 4u Digital and support admin@customtechbuilt4u.com confirmed. Published /privacy/, /terms/, /support/ and /zoom/ with actual retention and manual deletion practices.
 2. Supply BriefBooth app icon, category and company information; complete Zoom's EU/trader declarations truthfully with the owner. These cannot be inferred from a display name.
-3. Complete production contact information and meeting scope. Production callback is the same Supabase `/functions/v1/zoom/callback` endpoint, with strict matching.
+3. DONE: Production contacts, meeting-creation scope, strict callback matching, listing text, Scheduling category, unlisted distribution and public URLs are saved. Production callback is the Supabase `/functions/v1/zoom/callback` endpoint.
 4. Implement verified deauthorization events and appropriate token removal; test revoked consent and cross-consultant isolation.
-5. Stage production credentials separately from development. Do not break existing development-token refresh by replacing its client credentials while tokens remain in use. Use a per-connection environment identifier or reconnect the owner during cutover.
+5. DONE: Per-connection and OAuth-state environments are deployed, and the meeting worker refreshes each connection with its own environment credentials. Production Vault credentials are still pending; do not replace development credentials. Tests cover existing-owner preservation, production state binding, refresh preservation and credential isolation.
 6. Provide review test instructions and any requested demo/account. Submit for Zoom's functional/security review; outside-account distribution requires its approval.
 7. After approval, enable the public production flow, verify two independently owned consultant accounts, and retain the owner's working connection throughout migration.
 
 No review approval, external-account authorization, or production cutover has been claimed or completed.
+
+## Deployment verification — October 19, 2026
+
+Small-avatar feature and the 3,190-byte 4u Digital logo are live. Support/privacy/terms/Zoom guide are deployed on Cloudflare Pages; all four routes return HTTP 200. Lint, static build and production Pages route checks passed. No paid subscription was selected. Public Zoom activation remains off. EU release choice and additional own-user identity permission are awaiting the owner’s reply; no business identity, banking details or security certifications have been invented.
+
+Environment-isolation migration and Zoom Edge Function v2 are deployed. Live 4u Digital connection remains ready=true in development; public_enabled=false. Invalid OAuth state returns the expected safe expired redirect. `node tests/zoom.mjs` passes including isolation regressions. No new authorization, test meeting or email was created during this verification.

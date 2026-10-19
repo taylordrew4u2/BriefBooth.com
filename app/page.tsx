@@ -164,7 +164,7 @@ export default function Home() {
       </main>
       <footer className="site-footer">
         <Logo />
-        <span>Good conversations start with a little time.</span>
+        <span><Link href="/support">Support</Link> · <Link href="/privacy">Privacy</Link> · <Link href="/terms">Terms</Link></span>
         <Link href="/account">Consultant sign in ↗</Link>
       </footer>
     </>

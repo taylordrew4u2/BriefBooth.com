@@ -1764,3 +1764,11 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px
 }
 .studio-title { margin-bottom: 24px; }
 .booking-link-card .button.secondary { background: #fff; color: #333333 !important; border: 1px solid #b4b4b4; box-shadow: none; }
+
+.info-page { max-width: 760px; margin: 48px auto; padding: 0 24px 64px; line-height: 1.7; }
+.info-page h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.15; }
+.info-page h2 { margin-top: 32px; font-size: 1.3rem; }
+.info-page a { color: #137fec; text-decoration: underline; overflow-wrap: anywhere; }
+.info-page ol { padding-left: 24px; }
+.info-page li { margin: 12px 0; }
+.info-page hr { border: 0; border-top: 1px solid #ddd; margin: 32px 0; }

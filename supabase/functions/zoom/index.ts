@@ -12,16 +12,16 @@ Deno.serve(async req=>{
  try {
  const state=url.searchParams.get('state')||'';
  if(!/^[0-9a-f-]{36}$/i.test(state)) return redirect('expired');
- const owner=await rpc('zoom_consume_state',{p_state:state});
- if(!owner) return redirect('expired');
+ const context=await rpc('zoom_consume_context',{p_state:state});
+ if(!context) return redirect('expired');
  const code=url.searchParams.get('code');
  if(!code||url.searchParams.has('error')) return redirect('cancelled');
- const config=await rpc('zoom_config');
+ const config=await rpc('zoom_environment_config',{p_environment:context.environment});
  const res=await fetch('https://zoom.us/oauth/token',{method:'POST',headers:{Authorization:'Basic '+btoa(config.client_id+':'+config.client_secret),'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:callback}),signal:AbortSignal.timeout(10000)});
  if(!res.ok) return redirect('failed');
  const tokens=await res.json();
  if(!String(tokens.scope||'').split(' ').includes('meeting:write:meeting')) return redirect('scope');
- await rpc('zoom_store',{p_owner:owner,p_tokens:tokens});
+ await rpc('zoom_store_connection',{p_owner:context.owner_id,p_tokens:tokens,p_environment:context.environment});
  return redirect('connected');
  } catch {return redirect('failed');}
 });
