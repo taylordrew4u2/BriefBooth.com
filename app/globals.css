@@ -200,19 +200,14 @@ button {
   white-space: nowrap;
 }
 .logo-symbol {
-  width: 33px;
-  height: 33px;
-  display: grid;
-  place-content: center;
-  background: var(--primary);
-  color: white;
-  border-radius: 9px;
-  font-size: 25px;
-  line-height: 1;
-  padding-bottom: 4px;
-  letter-spacing: -3px;
-  padding-right: 3px;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--brand-blue);
 }
+.logo-symbol svg { width:100%; height:100%; display:block; }
+
 .logo-dot {
   font-size: 9px;
   align-self: flex-start;
@@ -1277,9 +1272,8 @@ textarea {
     gap: 7px;
   }
   .logo-symbol {
-    width: 29px;
-    height: 29px;
-    font-size: 22px;
+    width: 34px;
+    height: 34px;
   }
   .button.small {
     padding: 9px 12px;
@@ -1626,7 +1620,7 @@ textarea {
 }
 
 /* Brand blue carries the main actions; large bold labels keep white-on-blue readable. */
-.logo-symbol,.product-label>span,.status-dot{background:var(--brand-blue)}
+.product-label>span,.status-dot{background:var(--brand-blue)}
 .hero h1>span{color:var(--brand-blue)}
 .button:not(.small):not(.preview-button),.form-submit{background:var(--brand-blue);border-color:var(--brand-blue);color:#FFFFFF;font-size:19px!important;font-weight:700;line-height:1.25;min-height:52px!important}
 .button:not(.small):not(.preview-button):hover,.form-submit:hover{background:var(--brand-blue);box-shadow:0 0 0 3px #E7F2FE}

@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="public/brand/booth.svg" width="80" alt="BriefBooth booth icon" />
+
 # BriefBooth
 
 ### Your expertise. Their next step. One booking link.
@@ -65,6 +67,8 @@ Prefer to interact? **[Try the account-free demo](https://briefbooth.com/book/de
 <br />
 <img src="docs/media/studio-mobile.png" alt="Mobile consultant overview with navigation, approval count, upcoming meetings, and shareable booking link" width="360" />
 </details>
+
+The booth-shaped brand mark represents a space for a focused consultation. Reusable [blue](public/brand/booth.svg) and [white](public/brand/booth-white.svg) SVG assets share the same geometry as the application header and favicon.
 
 The interface uses a restrained blue-and-gray palette (`#137FEC`, `#333333`, `#676767`, `#B4B4B4`), visible keyboard focus, semantic form controls, and responsive layouts. The intake flow uses progressive disclosure to avoid presenting a long form all at once. These are implemented accessibility practices, not a claim of formal accessibility certification.
 
