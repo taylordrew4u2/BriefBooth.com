@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Logo } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { db } from "@/lib/supabase";
+import { pollSequentially } from "@/lib/polling";
 import { calendarFile } from "@/lib/calendar";
 type Details = {
   client_name: string;
@@ -25,31 +26,23 @@ export default function Manage() {
   }, []);
   const [booking, setBooking] = useState<Details | null>(null);
   const [message, setMessage] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
   useEffect(() => {
-    if (!token) return;
-    async function load() {
-      try {
-        const { data, error } = await db().rpc("booking_details", {
-          p_token: token!,
-        });
-        if (error || !data?.length)
-          throw new Error(
-            "This booking link is invalid or no longer available.",
-          );
-        setBooking(data[0]);
-      } catch (e) {
-        setMessage(e instanceof Error ? e.message : "Unable to load booking.");
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-    const timer=setInterval(load, 10000);
-    return ()=>clearInterval(timer);
-  }, [token]);
+    if (!token || busy) return;
+    return pollSequentially(async () => {
+      const { data, error } = await db().rpc("booking_details", { p_token: token });
+      if(error) throw new Error("We couldn’t refresh this booking. Check your connection; this page will retry automatically.");
+      if(!data?.length) throw new Error("This booking link is invalid or no longer available.");
+      return data[0];
+    }, value => {
+      setBooking(value); setLoadError(""); setLoading(false);
+    }, error => {
+      setLoadError(error instanceof Error ? error.message : "Unable to load booking."); setLoading(false);
+    });
+  }, [token, busy]);
   async function cancel() {
     setBusy(true);
     setMessage("");
@@ -204,6 +197,7 @@ export default function Manage() {
         ) : (
           <h1>Booking unavailable</h1>
         )}
+        {loadError && <div className="notice" role="status">{loadError}</div>}
         {message && (
           <p role="status" className="notice">
             {message}

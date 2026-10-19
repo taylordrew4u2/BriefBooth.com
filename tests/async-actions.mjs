@@ -40,3 +40,38 @@ for(const [file,name] of cases) {
   }
 }
 console.log('PASS real cancel, add-consultation, availability, and recovery handlers: rejection releases busy, no false success, successful requests complete');
+
+for (const name of ['saveTimezone','toggleService','savePaymentPreferences']) {
+  for (const outcome of ['success','reject','missing']) {
+    const busy=[],messages=[],writes=[],services=[];
+    const context={
+      profile:{timezone:'America/New_York',payment_methods:['Cash App'],payment_notes:'Ask first',published:false,slug:'unsaved-draft'},
+      savedProfile:{slug:'live-profile'},uid:'owner',
+      setBusy:value=>busy.push(value),setMessage:value=>messages.push(value),setTab:()=>{},setServices:value=>services.push(value),
+      db:()=>({from:table=>({update:values=>{
+        writes.push({table,values});
+        const chain={eq:()=>chain,select:()=>chain,single:async()=>{
+          if(outcome==='reject') throw new Error('offline');
+          return {data:outcome==='missing'?null:{id:'saved'},error:outcome==='missing'?{message:'No row'}:null};
+        }};return chain;
+      }})}),
+    };
+    await handler('app/studio/page.tsx',name,context)(name==='toggleService'?{id:'service',active:true}:{preventDefault(){}});
+    assert.deepEqual(busy,[true,false]);
+    if(name==='savePaymentPreferences') assert.deepEqual(Object.keys(writes[0].values).sort(),['payment_methods','payment_notes'],'Payment save must not publish profile drafts');
+    if(outcome!=='success') {
+      assert.match(messages.at(-1),/Couldn’t/);
+      assert.equal(services.length,0,'Failed visibility update must not change local state');
+    }
+  }
+}
+console.log('PASS scoped payment saves, timezone and visibility: success, offline, and missing-row responses');
+for (const [result,expected] of [[{data:{connected:true},error:null},'connected'],[{data:{connected:false},error:null},'disconnected'],[{data:null,error:{message:'offline'}},'error'],[{data:{},error:null},'error']]) {
+  const states=[];
+  await handler('components/zoom-connection.tsx','loadStatus',{active:true,db:()=>({rpc:async()=>result}),setStatus:value=>states.push(value)})();
+  assert.deepEqual(states,[expected]);
+}
+const states=[];
+await handler('components/zoom-connection.tsx','loadStatus',{active:true,db:()=>({rpc:async()=>{throw new Error('offline');}}),setStatus:value=>states.push(value)})();
+assert.deepEqual(states,['error']);
+console.log('PASS Zoom connection distinguishes connected, disconnected, invalid response, and network errors');

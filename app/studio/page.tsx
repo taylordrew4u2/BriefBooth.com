@@ -179,6 +179,39 @@ export default function Studio() {
       setBusy(false);
     }
   }
+  async function savePaymentPreferences(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!profile || !savedProfile) { setTab("profile"); setMessage("Save your profile before adding payment preferences."); return; }
+    setBusy(true); setMessage("");
+    try {
+      const { error } = await db().from("profiles").update({
+        payment_methods: profile.payment_methods || [], payment_notes: profile.payment_notes || "",
+      }).eq("id", uid).select("id").single();
+      if (error) throw error;
+      setMessage("Payment preferences saved.");
+    } catch { setMessage("Couldn’t save payment preferences. Check your connection and try again."); }
+    finally { setBusy(false); }
+  }
+  async function saveTimezone() {
+    if (!profile || !savedProfile) { setTab("profile"); setMessage("Save your profile before changing its timezone."); return; }
+    setBusy(true); setMessage("");
+    try {
+      const { error } = await db().from("profiles").update({ timezone: profile.timezone }).eq("id", uid).select("id").single();
+      if (error) throw error;
+      setMessage("Timezone saved.");
+    } catch { setMessage("Couldn’t save your timezone. Check your connection and try again."); }
+    finally { setBusy(false); }
+  }
+  async function toggleService(service: Service) {
+    setBusy(true); setMessage("");
+    try {
+      const { error } = await db().from("services").update({active: !service.active}).eq("id", service.id).eq("owner_id",uid).select("id").single();
+      if(error) throw error;
+      setServices(items => items.map(item => item.id === service.id ? {...item,active:!service.active} : item));
+      setMessage(service.active ? "Consultation hidden from your booking page." : "Consultation is available for booking.");
+    } catch { setMessage("Couldn’t update this consultation. Refresh to check its status and try again."); }
+    finally { setBusy(false); }
+  }
   async function addService(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!savedProfile) { setTab("profile"); setMessage("Save your profile before adding a consultation."); return; }
@@ -547,7 +580,7 @@ export default function Studio() {
                     {adding ? "Close form" : "+ Add consultation"}
                   </Button>
                 </div>
-                <form className="inset-form" onSubmit={saveProfile}>
+                <form className="inset-form" onSubmit={savePaymentPreferences}>
                   <h3>Arrange payment directly</h3>
                   <p>Booking on BriefBooth is free. If you charge for your time, agree on the price and payment with your client directly.</p>
                   <fieldset>
@@ -632,19 +665,8 @@ export default function Studio() {
                       </div>
                       <Button
                         variant="outline"
-                        onClick={async () => {
-                          const { error } = await db()
-                            .from("services")
-                            .update({ active: !s.active })
-                            .eq("id", s.id);
-                          if (error) setMessage(error.message);
-                          else
-                            setServices(
-                              services.map((x) =>
-                                x.id === s.id ? { ...x, active: !x.active } : x,
-                              ),
-                            );
-                        }}
+                        disabled={busy}
+                        onClick={() => toggleService(s)}
                       >
                         {s.active ? "Hide" : "Make available"}
                       </Button>
@@ -681,13 +703,8 @@ export default function Studio() {
                 </label>
                 <Button
                   variant="outline"
-                  onClick={async () => {
-                    const { error } = await db()
-                      .from("profiles")
-                      .update({ timezone: profile.timezone })
-                      .eq("id", uid);
-                    setMessage(error ? error.message : "Timezone saved.");
-                  }}
+                  disabled={busy}
+                  onClick={saveTimezone}
                 >
                   Save timezone
                 </Button>

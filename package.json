@@ -6,8 +6,8 @@
     "dev": "next dev",
     "build": "next build && node scripts/prepare-pages.mjs",
     "start": "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false wrangler pages dev out --port 3000",
-    "lint": "eslint app lib/supabase.ts lib/calendar.ts lib/database.types.ts components/site-header.tsx components/auth-return.tsx components/booking-client.tsx components/manage-client.tsx components/intake-template-picker.tsx lib/intake.ts lib/payments.ts lib/pricing.ts components/price-breakdown.tsx",
-    "test": "node tests/database.mjs && node tests/payments.mjs && node tests/zoom.mjs && node tests/zoom-webhook.mjs && node tests/zoom-gateway.mjs && node tests/avatar.mjs && node tests/async-actions.mjs",
+    "lint": "eslint app lib/supabase.ts lib/calendar.ts lib/database.types.ts components/site-header.tsx components/auth-return.tsx components/booking-client.tsx components/manage-client.tsx components/intake-template-picker.tsx lib/intake.ts lib/payments.ts lib/pricing.ts components/price-breakdown.tsx lib/polling.ts components/zoom-connection.tsx",
+    "test": "node tests/database.mjs && node tests/payments.mjs && node tests/zoom.mjs && node tests/zoom-webhook.mjs && node tests/zoom-gateway.mjs && node tests/avatar.mjs && node tests/async-actions.mjs && node tests/polling.mjs",
     "test:browser": "node tests/browser.mjs",
     "test:pages": "node tests/pages.mjs"
   },
