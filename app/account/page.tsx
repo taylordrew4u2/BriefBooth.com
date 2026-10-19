@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "@/components/site-header";
@@ -8,9 +8,15 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 export default function Account() {
   const router = useRouter();
+  const formHeading = useRef<HTMLHeadingElement>(null);
+  const previousMode = useRef("signin");
   const [mode, setMode] = useState("signin");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  useEffect(() => {
+    if (previousMode.current !== mode) formHeading.current?.focus();
+    previousMode.current = mode;
+  }, [mode]);
   useEffect(() => {
     const callback = new URLSearchParams(location.hash.slice(1));
     if (callback.has("error_description")) {
@@ -115,7 +121,7 @@ export default function Account() {
           </div>
         </div>
         <section className="auth-card">
-          <h2>
+          <h2 ref={formHeading} tabIndex={-1}>
             {mode === "signup"
               ? "Create your account"
               : mode === "reset"

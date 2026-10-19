@@ -41,7 +41,7 @@ export default function Booking() {
   const [busy, setBusy] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [timezone, setTimezone] = useState("UTC");
-  useEffect(() => { stepHeading.current?.focus(); }, [stage, intakeStep]);
+  useEffect(() => { stepHeading.current?.focus(); }, [stage, intakeStep, confirmed]);
   useEffect(() => {
     if (slug === null) return;
     let live = true;
@@ -273,7 +273,7 @@ export default function Booking() {
               {confirmed ? (
                 <div className="confirmation">
                   <div className="confirmation-check">✓</div>
-                  <h2>That’s how easy booking feels.</h2>
+                  <h2 ref={stepHeading} tabIndex={-1}>That’s how easy booking feels.</h2>
                   <p>This was a demo. No appointment was created.</p>
                   <Link href="/account?mode=signup" className="button">
                     Create your own booking page ↗
@@ -427,6 +427,7 @@ export default function Booking() {
                       {day && (
                         <>
                           <h3 className="times-title">Available times</h3>
+                          <p className="sr-only" role="status" aria-atomic="true">{busy ? "Loading available times." : `${slots.length} available times for the selected date.`}</p>
                           <div className="time-grid">
                             {busy ? (
                               <p role="status">Finding available times…</p>

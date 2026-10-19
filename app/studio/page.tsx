@@ -572,8 +572,8 @@ export default function Studio() {
                       </label>
                       <label className="checkbox-label"><Input type="checkbox" checked={q.required} onChange={e=>setProfile({...profile,intake_questions:profile.intake_questions.map(x=>x.id===q.id?{...x,required:e.target.checked}:x)})}/>Required answer</label>
                       <div className="form-row">
-                        <Button type="button" variant="outline" disabled={i===0} onClick={()=>{const questions=[...profile.intake_questions];[questions[i-1],questions[i]]=[questions[i],questions[i-1]];setProfile({...profile,intake_questions:questions});}}>Move up</Button>
-                        <Button type="button" variant="outline" onClick={()=>setProfile({...profile,intake_questions:profile.intake_questions.filter(x=>x.id!==q.id)})}>Remove question</Button>
+                        <Button type="button" variant="outline" disabled={i===0} aria-label={`Move question ${i+1} up: ${q.label || "Untitled question"}`} onClick={()=>{const questions=[...profile.intake_questions];[questions[i-1],questions[i]]=[questions[i],questions[i-1]];setProfile({...profile,intake_questions:questions});}}>Move up</Button>
+                        <Button type="button" variant="outline" aria-label={`Remove question ${i+1}: ${q.label || "Untitled question"}`} onClick={()=>setProfile({...profile,intake_questions:profile.intake_questions.filter(x=>x.id!==q.id)})}>Remove question</Button>
                       </div>
                     </fieldset>
                   ))}
@@ -822,13 +822,13 @@ export default function Studio() {
                           </p>
                           {b.notes && (
                             <details>
-                              <summary>Client intake</summary>
+                              <summary aria-label={`Client intake for ${b.client_name}`}>Client intake</summary>
                               <p style={{ whiteSpace: "pre-wrap" }}>{b.notes}</p>
                             </details>
                           )}
                         </div>
-                        {b.status==="pending_approval" && <div className="manage-actions">{[true,false].map(approve=><Button variant={approve ? "default" : "outline"} key={String(approve)} type="button" disabled={busy || refreshing} onClick={() => reviewRequest(b.id, approve)}>{approve?"Approve request":"Decline request"}</Button>)}</div>}
-                        <a href={"/manage/" + b.manage_token}>
+                        {b.status==="pending_approval" && <div className="manage-actions">{[true,false].map(approve=><Button variant={approve ? "default" : "outline"} key={String(approve)} type="button" aria-label={`${approve ? "Approve" : "Decline"} request for ${b.client_name}`} disabled={busy || refreshing} onClick={() => reviewRequest(b.id, approve)}>{approve?"Approve request":"Decline request"}</Button>)}</div>}
+                        <a aria-label={`Manage booking for ${b.client_name}`} href={"/manage/" + b.manage_token}>
                           Manage booking ↗
                         </a>
                       </article>

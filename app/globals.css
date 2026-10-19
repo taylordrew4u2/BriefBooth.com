@@ -1933,3 +1933,18 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px
   .booking-experience .time-option.active,
   .booking-experience .booking-journey li[aria-current] > span { outline: 2px solid Highlight; }
 }
+
+/* Shared mobile and assistive-technology audit fixes. */
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
+.info-page a { color:#0963bf; }
+.info-page nav { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.info-page nav a { display:inline-flex; align-items:center; min-height:44px; padding:8px; }
+.studio-panel article summary,.studio-panel article > a { display:inline-flex; align-items:center; min-height:44px; padding:8px 0; }
+.studio-panel article a[href^="mailto:"] { display:inline-block; padding:6px 0; }
+@media (max-width:700px) {
+  .studio-panel input:not([type=checkbox]):not([type=radio]),.studio-panel textarea,.studio-panel select,.auth-card input { font-size:16px; }
+}
+@media (max-width:360px) {
+  .booking-experience .booking-journey { display:grid; grid-template-columns:1fr; gap:8px; }
+  .booking-experience .booking-journey li { flex-direction:row; text-align:left; font-size:14px; }
+}
