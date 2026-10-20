@@ -34,3 +34,11 @@ Cloudflare and Supabase remain on the existing free setup; Vercel and unrelated 
 The app interface and guarded payment server are deployed. The user authorized storing the existing live webhook secret, and `briefbooth_stripe_production_webhook_secret` is now present in encrypted Vault (format checked without printing it). The live API key is still awaiting the user credential handoff; the prepared Stripe form is at `/apikeys/create`, and the separate Vault form is named `briefbooth_stripe_production_key`. Do not toggle activation before it is saved and verified.
 
 Live admin previews displayed $5 + $0.46 = $5.46 and $500 + $15.24 = $515.24. The example form was closed without saving; the existing 4u Digital consultation remains $0. Live Pages route/security checks passed. The webhook endpoint remains disabled until the credential/configuration prerequisites are complete.
+
+## October 20 activation update
+
+Stripe's review banner cleared, final details show Complete, and live connected-account creation is available. The full restricted production key is saved in encrypted Vault and authenticated successfully against both v1 and v2 account-list endpoints (HTTP 200). The matching production webhook secret is stored.
+
+Enabled only BriefBooth endpoint `we_1UREhiLON2mfUoQ25QroEs0p`, set live/enabled flags, and redeployed payments v6. Restored the single five-minute reconciliation job. An authenticated reconciliation call returned HTTP 200 with zero pending records. A signed, non-payment diagnostic event returned HTTP 200; unsigned input returned HTTP 400. This verifies signature handling, not a real Stripe payment or provider-originated delivery.
+
+Consultants must finish their own live Stripe onboarding before paid services can be published. No live connected merchant currently exists; merchant readiness, live Checkout creation, and a real payment remain unverified until onboarding is completed. No real charge was made and existing consultation prices were not changed. The fee-breakdown interface was already deployed and is unchanged. Other hosting/services remain on their existing free setup and Vercel remains paused.
