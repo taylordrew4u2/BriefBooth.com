@@ -51,6 +51,6 @@ This update supersedes the earlier pending deployment/connection notes.
 - Live client intake submitted through the public booking page. Pending request had zero Google jobs and zero confirmation messages before approval. Approved through consultant studio; Google created one event and Meet URL.
 - Both distinct confirmation messages arrived in Gmail: client alias at 7:09 AM and consultant at 7:10 AM. Opened and checked both: same Meet URL, correct appointment time, and intake details. These used two recipient addresses delivering to the owner's Gmail, not two independent mailbox providers.
 - Fixed Google Meet mislabeled as Zoom in the booking review, confirmation heading, and screen-reader status. Build passed; full test suite passed before final display-only fixes; subsequent production build passed. Correct wording verified on live custom domain.
-- Disposable test appointment cancelled after delivery verification; checking worker cleanup separately.
+- Disposable test appointment cancelled after delivery verification. Worker confirmed Google event cancellation without errors; subsequent availability sync released the test time.
 - Google branding verification remains blocked by Google's instruction to wait 24 hours after domain verification before retrying. Sensitive-scope review has not been submitted or approved. Production audience does not equal Google approval; unverified warning/user cap remain.
 - No billing, paid plan, platform fee, or real payment added. Vercel remains untouched/paused.
