@@ -202,6 +202,12 @@ await db.query("select google_job_result($1,'https://meet.google.com/abc-defg-hi
 assert.equal((await db.query('select meeting_url from booking_details($1)',[gt])).rows[0].meeting_url,'https://meet.google.com/abc-defg-hij');
 const gm=(await db.query("select body from briefbooth_private.booking_emails where booking_id=$1 and recipient_kind in ('client','consultant')",[gb])).rows;
 assert.equal(gm.length,2);assert(gm.every(x=>x.body.includes('https://meet.google.com/abc-defg-hij')));
+const settlementTime=(await db.query('select starts_at from available_slots($1,current_date+14)',[svc])).rows[0].starts_at;
+const held=(await db.query("select payments_reserve($1,$2,'Held client','held@example.com','{}',gen_random_uuid(),546,true,'zoom') p",[svc,settlementTime])).rows[0].p;
+await db.query("update briefbooth_private.google_connections set synced_at=now()-interval '20 minutes' where owner_id=$1",[owner]);
+await db.query("select payments_settle($1,'acct_live_test_fixture','cs_held_fixture',546,true,'paid','pi_held_fixture')",[held.booking_id]);
+assert.equal((await db.query('select status from bookings where id=$1',[held.booking_id])).rows[0].status,'pending_approval','Stale external sync must not strand a paid reservation');
+await db.query("select google_sync_busy($1,'[]',now())",[owner]);
 await db.exec('set role authenticated');
 await assert.rejects(()=>db.query('select google_worker_context()'),/permission denied/);
 await db.query('select google_disconnect()');

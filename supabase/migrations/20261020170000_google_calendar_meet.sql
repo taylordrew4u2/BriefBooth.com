@@ -73,6 +73,8 @@ alter table public.bookings drop constraint bookings_meeting_mode_check;
 alter table public.bookings add constraint bookings_meeting_mode_check check(meeting_mode in ('zoom','google_meet','in_person'));
 create function briefbooth_private.guard_google_booking() returns trigger language plpgsql security definer set search_path='' as $$
 begin
+-- Preserve an already held checkout while its payment settles, even if external availability changed.
+if tg_op='UPDATE' and old.status in ('pending_payment','payment_processing') and new.status in ('payment_processing','pending_approval','confirmed') and old.starts_at=new.starts_at and old.ends_at=new.ends_at and old.owner_id=new.owner_id then return new; end if;
 if new.status in ('confirmed','pending_approval','pending_payment','payment_processing') and (tg_op='INSERT' or old.status is distinct from new.status) then
  if new.meeting_mode='google_meet' and not exists(select 1 from briefbooth_private.google_connections where owner_id=new.owner_id and ready) then raise exception 'This consultant needs to connect Google before accepting Google Meet bookings.'; end if;
  if exists(select 1 from briefbooth_private.google_connections where owner_id=new.owner_id and (not ready or synced_at is null or synced_at<now()-interval '10 minutes')) then raise exception 'Calendar availability is updating. Please try again shortly.'; end if;

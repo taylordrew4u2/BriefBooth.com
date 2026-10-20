@@ -29,3 +29,15 @@ Signing in with admin@customtechbuilt4u.com returned “Couldn’t find this acc
 6. Apply migrations 20261020170000 and 20261020171000 only after review; verify net.http_post and Vault two-argument create_secret supported. Deploy google edge function with own cron-secret authentication and OAuth state; verify callback gateway and unauthorized rejection.
 7. Deploy Cloudflare static release once backend is ready; Vercel stays paused. Test authorized consultant OAuth, busy-time hiding, approval and instant Meet bookings, cancellation and both inboxes. No real charges. Preserve 4u Digital Zoom connection and free consultation.
 8. Google Sign-In to BriefBooth was discussed, not implemented; current feature connects Calendar/Meet after normal BriefBooth login. Outlook/iCloud automatic sync is not implemented. Existing ICS download remains.
+
+## October 20 deployment update
+- Business Google account admin@customtechbuilt4u.com created by user; name 4u Digital, padded white logo saved. Existing email delivery unchanged.
+- OAuth Config Editor granted to business account with explicit approval. Owner remains original account; business account does not have overview quota or service-account-list access, so remaining console work uses original owner.
+- Branding saved as BriefBooth with business support/developer contact, briefbooth.com home/privacy/terms and authorized domain.
+- User created production Web OAuth credential with callback above. Both values stored in Vault with explicit transfer approval and presence verified without exposing secrets.
+- User approved scopes, API terms and production switch. Calendar API enabled. Audience now In production; branding and sensitive-scope verification NOT submitted/approved. Google shows 100-user cap before verification.
+- Both Google migrations applied; pg_net enabled for scheduler. Google edge function v1 ACTIVE with its own state/cron authentication; unauthenticated sync returns 401. No consultant connected yet.
+- Payment settlement guard fixed to preserve existing checkout holds if external sync is stale. Regression test added and full npm test and build pass.
+- Callback UI now explains success/expired/cancelled/missing-scope/failure. Worker has 40-second loop budget (individual in-flight network calls may extend it).
+- Cloudflare release upload initiated this turn. Verify deployment success and callback before claiming live.
+- Still required: actual OAuth consent, real Meet event and both emails, cancellation/busy checks; branding/domain verification and Google review evidence. No Google or all-calendar sync completion claim yet.

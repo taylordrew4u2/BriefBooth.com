@@ -24,8 +24,10 @@ Deno.serve(async req=>{
  try{
  const cfg=await rpc('google_config');
  if(!cfg.cron_secret||req.headers.get('X-Calendar-Job')!==cfg.cron_secret)return new Response('Unauthorized',{status:401});if(!cfg.client_id||!cfg.client_secret)return Response.json({configured:false});
+ const deadline=Date.now()+40000;
  const connections=await rpc('google_worker_context');let processed=0;
  for(const c of connections){
+  if(Date.now()>deadline)break;
   let token=c.tokens.access_token;
   try{
    if(Date.parse(c.expires_at)<Date.now()+120000){
@@ -35,6 +37,7 @@ Deno.serve(async req=>{
    }
    await sync(c.owner_id,token);
    for(const j of await rpc('google_jobs',{p_owner:c.owner_id})){
+    if(Date.now()>deadline)break;
     try{
      const id=eventId(j.booking_id);const path='calendars/primary/events/'+id;
      if(j.booking_status!=='confirmed'){

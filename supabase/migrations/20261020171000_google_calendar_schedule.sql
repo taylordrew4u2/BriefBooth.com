@@ -1,3 +1,4 @@
+create extension if not exists pg_net with schema extensions;
 -- Dedicated secret never leaves server-side Vault; only invokes this worker.
 do $$ begin
 if not exists(select 1 from vault.secrets where name='briefbooth_google_cron_secret') then
