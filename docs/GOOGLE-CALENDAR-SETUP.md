@@ -41,3 +41,16 @@ Signing in with admin@customtechbuilt4u.com returned “Couldn’t find this acc
 - Callback UI now explains success/expired/cancelled/missing-scope/failure. Worker has 40-second loop budget (individual in-flight network calls may extend it).
 - Cloudflare release upload initiated this turn. Verify deployment success and callback before claiming live.
 - Still required: actual OAuth consent, real Meet event and both emails, cancellation/busy checks; branding/domain verification and Google review evidence. No Google or all-calendar sync completion claim yet.
+
+## October 20 live validation, 7:13 AM Eastern
+This update supersedes the earlier pending deployment/connection notes.
+- Google Search Console verified briefbooth.com ownership using public/googleb22df470dfcf9136.html; retain this public verification file in future releases.
+- Cloudflare production release is live on briefbooth.com. Google callback completed successfully after the user handled Google's unverified-app warning and granted calendar access to the selected Taylor Drew account.
+- 4u Digital Google connection is ready; primary-calendar busy intervals are being synchronized by the active five-minute scheduler. Existing Zoom connection and free Zoom consultation remain intact.
+- Added a free 30-minute Google Meet consultation, approval required, and updated the profile to describe both choices.
+- Live client intake submitted through the public booking page. Pending request had zero Google jobs and zero confirmation messages before approval. Approved through consultant studio; Google created one event and Meet URL.
+- Both distinct confirmation messages arrived in Gmail: client alias at 7:09 AM and consultant at 7:10 AM. Opened and checked both: same Meet URL, correct appointment time, and intake details. These used two recipient addresses delivering to the owner's Gmail, not two independent mailbox providers.
+- Fixed Google Meet mislabeled as Zoom in the booking review, confirmation heading, and screen-reader status. Build passed; full test suite passed before final display-only fixes; subsequent production build passed. Correct wording verified on live custom domain.
+- Disposable test appointment cancelled after delivery verification; checking worker cleanup separately.
+- Google branding verification remains blocked by Google's instruction to wait 24 hours after domain verification before retrying. Sensitive-scope review has not been submitted or approved. Production audience does not equal Google approval; unverified warning/user cap remain.
+- No billing, paid plan, platform fee, or real payment added. Vercel remains untouched/paused.

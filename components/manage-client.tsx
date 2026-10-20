@@ -79,7 +79,7 @@ export default function Manage() {
         <Link href="/">Home ↗</Link>
       </header>
       <main id="main" className="manage-card">
-        <p className="sr-only" role="status" aria-atomic="true">{booking ? `Booking status: ${booking.status.replaceAll("_", " ")}.${booking.status === "confirmed" && booking.meeting_url ? " Your Zoom meeting link is ready." : ""}` : ""}</p>
+        <p className="sr-only" role="status" aria-atomic="true">{booking ? `Booking status: ${booking.status.replaceAll("_", " ")}.${booking.status === "confirmed" && booking.meeting_url ? ` Your ${booking.meeting_mode === "google_meet" ? "Google Meet" : "Zoom"} meeting link is ready.` : ""}` : ""}</p>
         {loading ? (
           <p role="status">Loading your booking…</p>
         ) : booking ? (
@@ -132,7 +132,7 @@ export default function Manage() {
                   <strong>
                     {booking.meeting_mode === "in_person"
                       ? "In-person consultation"
-                      : "Consultation via Zoom"}
+                      : booking.meeting_mode === "google_meet" ? "Consultation via Google Meet" : "Consultation via Zoom"}
                   </strong>
                 </p>
                 {booking.meeting_mode === "in_person" ? (

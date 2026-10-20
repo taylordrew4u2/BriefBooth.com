@@ -482,7 +482,7 @@ export default function Booking() {
                                   {timezone} · {service?.duration} minutes ·{" "}
                                   {meetingMode === "in_person"
                                     ? "In person"
-                                    : "Zoom"}
+                                    : meetingMode === "google_meet" ? "Google Meet" : "Zoom"}
                                 </small>
                               </div>
                               {service && service.amount_cents > 0 ? <div className="inset-form">
