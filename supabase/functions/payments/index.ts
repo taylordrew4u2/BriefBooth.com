@@ -131,15 +131,30 @@ Deno.serve(async req => {
     const { data: { user }, error } = await db.auth.getUser(token);
     if (error || !user) return json({ error: "Sign in first." }, 401);
     if (!live && user.id !== config.sandbox_owner) throw new Error("Payments are being tested. Free consultations remain available.");
-    if (!["connect", "account"].includes(body.action)) return json({ error: "Unknown action." }, 400);
+    if (!["connect", "account", "embedded-config", "embedded-session"].includes(body.action)) return json({ error: "Unknown action." }, 400);
     const { data: profile } = await db.from("profiles").select("id,name").eq("id", user.id).single();
     if (!profile) throw new Error("Save your profile first.");
+    if (body.action === "embedded-config") {
+      if (!/^pk_live_/.test(config.publishable_key || "")) throw new Error("Secure payment setup is being prepared. Free bookings remain available.");
+      return json({ publishable_key: config.publishable_key });
+    }
     let a = await account(user.id);
     if (a && a.livemode !== live) a = null;
     if (body.action === "account") return json({ connected: !!a, ready: a ? await syncAccount(user.id, a.account_id) : false, live });
     if (!a) {
       const created = await stripe.v2.core.accounts.create({ contact_email: user.email, display_name: profile.name, dashboard: "full", identity: { country: "us" }, defaults: { responsibilities: { fees_collector: "stripe", losses_collector: "stripe" } }, configuration: { merchant: { capabilities: { card_payments: { requested: true } } } } }, { idempotencyKey: `briefbooth-account-${user.id}` });
       a = await rpc("payments_account", { p_owner: user.id, p_account: created.id, p_ready: false, p_live: live });
+    }
+    if (body.action === "embedded-session") {
+      const session = await stripe.accountSessions.create({
+        account: a.account_id,
+        components: {
+          account_onboarding: { enabled: true },
+          account_management: { enabled: true },
+          notification_banner: { enabled: true },
+        },
+      });
+      return json({ client_secret: session.client_secret });
     }
     const link = await stripe.v2.core.accountLinks.create({ account: a.account_id, use_case: { type: "account_onboarding", account_onboarding: { configurations: ["merchant"], refresh_url: `${origin}/studio/?stripe=refresh`, return_url: `${origin}/studio/?stripe=return` } } });
     return json({ url: link.url });
