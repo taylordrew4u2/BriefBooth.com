@@ -1,6 +1,6 @@
 # Zoom resubmission — October 20, 2026
 
-User authorized withdrawing the existing submission and resubmitting stronger review materials. Existing app retained; no duplicate app created. Withdrawal completed in Zoom; improved release notes entered (1856/2000 characters). Final submission is pending action-time authorization for the accuracy warranty/legal submission.
+User authorized withdrawing the existing submission and resubmitting stronger review materials. Existing app retained; no duplicate app created. Withdrawal completed in Zoom; improved release notes entered (1856/2000 characters). The user then approved the final accuracy declaration at action time. Submission completed October 20; Zoom displayed “You have submitted the app” and “Publish In review.” Approval is pending; manual activation remains selected.
 
 ## Deployed improvements
 - Migration `20261020160000_zoom_self_service_oauth.sql` applied to production: authenticated consultants with saved profiles can initiate production OAuth. Zoom still enforces unpublished-app eligibility and consent. Existing owner development connection remains unchanged. No extra scopes or new access grants.
