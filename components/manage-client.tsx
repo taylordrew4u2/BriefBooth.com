@@ -147,7 +147,7 @@ export default function Manage() {
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    Join Zoom consultation ↗
+                    Join {booking.meeting_mode === "google_meet" ? "Google Meet" : "Zoom"} consultation ↗
                   </a>
                 ) : (
                   <p>Your meeting link is being prepared. This page updates automatically. Your confirmation email will include the link once it is ready.</p>

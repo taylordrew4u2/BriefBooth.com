@@ -10,4 +10,4 @@ for (const [source, target] of [
 }
 
 copyFileSync('scripts/zoom-gateway.js','out/_worker.js');
-writeFileSync('out/_routes.json',JSON.stringify({version:1,include:['/api/zoom/*'],exclude:[]}));
+writeFileSync('out/_routes.json',JSON.stringify({version:1,include:['/api/zoom/*','/api/google/callback'],exclude:[]}));

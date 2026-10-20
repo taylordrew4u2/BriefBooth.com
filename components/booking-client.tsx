@@ -262,7 +262,7 @@ export default function Booking() {
                     {service.duration} minutes ·{" "}
                     {service.meeting_modes
                       .map((mode) =>
-                        mode === "in_person" ? "In person" : "Zoom",
+                        mode === "in_person" ? "In person" : mode === "google_meet" ? "Google Meet" : "Zoom",
                       )
                       .join(" or ")}
                   </span>
@@ -391,7 +391,7 @@ export default function Booking() {
                                 <span>
                                   {mode === "in_person"
                                     ? "In-person consultation"
-                                    : "Consultation via Zoom"}
+                                    : mode === "google_meet" ? "Consultation via Google Meet" : "Consultation via Zoom"}
                                 </span>
                               </label>
                             ))}

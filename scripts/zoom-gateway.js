@@ -3,10 +3,11 @@ const upstream='https://kjjfpacypvdfdktkssst.supabase.co/functions/v1/zoom';
 export default {
  async fetch(request,env){
   const url=new URL(request.url);
-  const allowed=(url.pathname==='/api/zoom/callback'&&request.method==='GET')||(url.pathname==='/api/zoom/deauthorize'&&request.method==='POST');
+  const isGoogle=url.pathname==='/api/google/callback'&&request.method==='GET';
+  const allowed=isGoogle||(url.pathname==='/api/zoom/callback'&&request.method==='GET')||(url.pathname==='/api/zoom/deauthorize'&&request.method==='POST');
   if(!allowed)return new Response('Not found',{status:404});
   if(Number(request.headers.get('content-length')||0)>16384)return new Response('Too large',{status:413});
-  const target=upstream+url.pathname.slice('/api/zoom'.length)+url.search;
+  const target=isGoogle?'https://kjjfpacypvdfdktkssst.supabase.co/functions/v1/google/callback'+url.search:upstream+url.pathname.slice('/api/zoom'.length)+url.search;
   const headers=new Headers();
   for(const key of ['content-type','x-zm-request-timestamp','x-zm-signature']){const value=request.headers.get(key);if(value)headers.set(key,value);}
   try{

@@ -2,6 +2,7 @@
 import { PriceBreakdown } from "@/components/price-breakdown";
 import { PaymentSetup } from "@/components/payment-setup";
 import { money, priceBreakdown } from "@/lib/pricing";
+import { GoogleConnection } from "@/components/google-connection";
 import { ZoomConnection } from "@/components/zoom-connection";
 import { IntakeTemplatePicker } from "@/components/intake-template-picker";
 import { defaultQuestions } from "@/lib/intake";
@@ -495,9 +496,10 @@ export default function Studio() {
                       <option value="instant">Instant booking — confirm automatically</option>
                       <option value="approval">Request approval — I approve each meeting</option>
                     </select>
-                    <span className="field-help">Requests hold the selected time. Zoom links and confirmation emails are sent only after approval. Save your profile to apply this setting.</span>
+                    <span className="field-help">Requests hold the selected time. Meeting links and confirmation emails are sent only after approval. Save your profile to apply this setting.</span>
                   </label>
                   <ZoomConnection />
+                  <GoogleConnection />
                   <label>
                     Backup Zoom meeting link{" "}
                     <span className="field-help">
@@ -659,6 +661,9 @@ export default function Studio() {
                         </option>
                         <option value="in_person">In person only</option>
                         <option value="zoom">Zoom only</option>
+                        <option value="google_meet">Google Meet only (connect Google first)</option>
+                        <option value="zoom,google_meet">Zoom or Google Meet</option>
+                        <option value="zoom,google_meet,in_person">Zoom, Google Meet, or in person</option>
                       </select>
                     </label>
                     <Button type="submit" disabled={busy}>
@@ -683,7 +688,7 @@ export default function Studio() {
                           {s.amount_cents ? money(priceBreakdown(s.amount_cents).total) + " total" : "Free to book"} · {s.duration} minutes ·{" "}
                           {s.meeting_modes
                             .map((mode) =>
-                              mode === "in_person" ? "In person" : "Zoom",
+                              mode === "in_person" ? "In person" : mode === "google_meet" ? "Google Meet" : "Zoom",
                             )
                             .join(" / ")}{" "}
                           · {s.active ? "Available for booking" : "Hidden"}
@@ -829,7 +834,7 @@ export default function Studio() {
                           <p>
                             {b.meeting_mode === "in_person"
                               ? "In-person consultation"
-                              : "Zoom consultation"}
+                              : b.meeting_mode === "google_meet" ? "Google Meet consultation" : "Zoom consultation"}
                           </p>
                           {b.notes && (
                             <details>

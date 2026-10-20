@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {eventId,eventBody,meetingUrl,busyPeriods,scopes} from '../supabase/functions/google/provider.mjs';
+const job={booking_id:'00000000-0000-4000-8000-000000000001',title:'Consultation',starts_at:'2026-10-25T13:00:00Z',ends_at:'2026-10-25T13:30:00Z'};
+assert.equal(eventId(job.booking_id),eventId(job.booking_id));
+assert.match(eventId(job.booking_id),/^[a-v0-9]{5,1024}$/);
+assert.deepEqual(eventBody(job),eventBody({...job,notes:'PRIVATE INTAKE',client_email:'private@example.com'}));
+assert.equal(meetingUrl({conferenceData:{entryPoints:[{entryPointType:'video',uri:'https://meet.google.com/abc-defg-hij'}]}}),'https://meet.google.com/abc-defg-hij');
+assert.equal(meetingUrl({conferenceData:{entryPoints:[{entryPointType:'video',uri:'https://evil.example/meeting'}]}}),null);
+assert.throws(()=>busyPeriods({calendars:{primary:{errors:[{reason:'forbidden'}],busy:[]}}}));
+assert.throws(()=>busyPeriods({}));
+assert.deepEqual(busyPeriods({calendars:{primary:{busy:[{start:job.starts_at,end:job.ends_at,summary:'private'}]}}}),[{start:job.starts_at,end:job.ends_at}]);
+assert.equal(scopes.length,2);
+console.log('PASS deterministic Google event IDs, minimum event data, validated Meet links and fail-closed busy-time responses');

@@ -69,6 +69,9 @@ export type Database = {
     CompositeTypes: Record<string, never>;
     Functions: {
       review_booking: {Args: {p_booking: string;p_approve: boolean};Returns: string};
+      google_status: {Args: Record<string, never>; Returns: {configured:boolean;connected:boolean;synced_at:string|null;error:string|null}};
+      google_begin: {Args: Record<string, never>; Returns:string};
+      google_disconnect: {Args: Record<string, never>; Returns:undefined};
       zoom_status: { Args: Record<string, never>; Returns: { connected: boolean } };
       zoom_begin: { Args: Record<string, never>; Returns: string };
       available_slots: {
