@@ -27,7 +27,7 @@ Released to https://briefbooth.com on the existing Cloudflare Pages project. Sup
 
 ## Remaining work / external dependencies
 
-- Signed-in admin UI and fresh signup were not retested in this release: browser session expired; sign-in handoff remains open. Backend approval was verified, not an admin-button click.
+- Signed-in admin verification completed after the user signed in: booking-link copy, activity report, private export download, saving existing booking rules, consultation edit/save, and approval through the admin button all passed. The new free test created a Google Meet; client and consultant confirmations arrived in Gmail at 18:42 and 18:43 UTC. Cancellation through the client UI succeeded afterward. Admin Overview and Bookings fit a 390-pixel phone viewport. Fresh signup was not retested in this release.
 - Google branding is verified and published. Calendar scope verification is not submitted/completed: portal requires a genuine YouTube authorization/scope-usage video before saving the prepared justification. No invented video or approval claim.
 - Zoom public review remains external. Current grant lacks meeting deletion, so old Zoom meetings require manual removal; the UI exposes the cleanup link. No scope expansion or review withdrawal performed.
 - Stripe merchant onboarding and actual checkout/refund verification remain incomplete. Local payment-state tests pass; no real charge was attempted. Refund action leads to Stripe, not automatic refunds.
