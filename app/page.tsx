@@ -170,8 +170,9 @@ export default function Home() {
           </details>
           <details>
             <summary>Can I charge for my consultation?</summary>
-            <p>Booking through BriefBooth is free. Agree on any consultation fee directly with your client and share your preferred payment methods. BriefBooth does not collect payments.</p>
+            <p>Offer free consultations, arrange payment directly, or connect Stripe to accept payment at checkout. Stripe processing fees apply to paid bookings; BriefBooth adds no platform fee.</p>
           </details>
+          <details><summary>Will clients receive reminders?</summary><p>Consultants can enable appointment reminders in Availability. Reminders use the existing free email allowance and may be delayed if its limit is reached.</p></details>
           <details>
             <summary>Can I connect Zoom?</summary>
             <p>Automatic Zoom connections are currently available to our initial connected account while broader access awaits Zoom review. Other consultants can add a Zoom meeting link in their studio.</p>
@@ -179,9 +180,7 @@ export default function Home() {
           <details>
             <summary>Does BriefBooth sync my other calendars?</summary>
             <p>
-              Not yet. BriefBooth prevents conflicts with bookings made here.
-              You can download a calendar event after booking. External calendar
-              sync and automatic email reminders are not included.
+              Connect Google Calendar to check busy times on your primary calendar and create Google Meet consultations. Availability refreshes periodically. Apple and Outlook can subscribe to a private calendar feed or use calendar downloads. Their busy times are not read by BriefBooth.
             </p>
           </details>
         </section>

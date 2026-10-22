@@ -44,6 +44,9 @@ type BookingRow = {
   meeting_mode: string;
   manage_token: string;
   created_at: string;
+  title_snapshot: string;
+  outcome: string|null;
+  consultant_notes: string;
 };
 type Table<Row, Insert = Partial<Row>> = {
   Row: Row;
@@ -54,6 +57,8 @@ type Table<Row, Insert = Partial<Row>> = {
 export type Database = {
   public: {
     Tables: {
+      schedule_preferences: Table<{owner_id:string;notice_hours:number;horizon_days:number;buffer_minutes:number;reminders:boolean}>;
+      schedule_overrides: Table<{owner_id:string;day:string;enabled:boolean;start_time:string;end_time:string}>;
       profiles: Table<ProfileRow>;
       services: Table<ServiceRow>;
       availability: Table<HoursRow>;
@@ -68,6 +73,18 @@ export type Database = {
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
     Functions: {
+      record_booking_outcome: {Args:{p_booking:string;p_outcome:string|null;p_notes:string};Returns:undefined};
+      booking_health: {Args:{p_booking:string};Returns:unknown};
+      retry_booking_delivery: {Args:{p_booking:string};Returns:undefined};
+      request_account_removal:{Args:Record<string,never>;Returns:undefined};
+      export_my_data:{Args:Record<string,never>;Returns:unknown};
+      my_insights:{Args:Record<string,never>;Returns:unknown};
+      record_funnel:{Args:{p_owner:string;p_visit:string;p_stage:string};Returns:undefined};
+      reschedule_slots:{Args:{p_token:string;p_day:string};Returns:{starts_at:string}[]};
+      reschedule_booking:{Args:{p_token:string;p_start:string;p_expected:string};Returns:undefined};
+      zoom_cleanup_items:{Args:{p_booking:string};Returns:unknown};
+      calendar_feed_link:{Args:{p_reset:boolean;p_disable:boolean};Returns:string|null};
+      delete_my_account:{Args:{p_confirmation:string};Returns:undefined};
       review_booking: {Args: {p_booking: string;p_approve: boolean};Returns: string};
       google_status: {Args: Record<string, never>; Returns: {configured:boolean;connected:boolean;synced_at:string|null;error:string|null}};
       google_begin: {Args: Record<string, never>; Returns:string};

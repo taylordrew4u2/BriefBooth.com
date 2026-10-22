@@ -23,7 +23,7 @@ for(const [file,name] of cases) {
       db:()=>({rpc:request,auth:{updateUser:request},from:()=>({insert:()=>({select:()=>({single:request})})})}),
       setBusy:value=>busy.push(value),setMessage:value=>messages.push(value),
       setBooking:value=>bookings.push(value),setConfirm:()=>{},setTab:()=>{},
-      setServices:()=>{},setAdding:()=>{},setSavedHours:()=>{},
+      setServices:()=>{},setAdding:()=>{},setSavedHours:()=>{},editing:null,setEditing:()=>{},
       token:'test-token',booking:{status:'confirmed'},savedProfile:{slug:'demo'},uid:'owner',services:[],
       hours:[{enabled:true,weekday:1,start_time:'09:00',end_time:'17:00'}],
       router:{push:path=>routes.push(path)},
@@ -107,7 +107,7 @@ const validToken='11111111-1111-4111-8111-111111111111';
 for(const outcome of ['success','invalid','reject']) {
   const flags=[],messages=[],routes=[],requests=[];
   let resolve, reject;
-  const context={submittingRequest:{current:false},busy:false,demo:false,service:{id:'service'},slot:'2026-11-01T15:00:00Z',intake:{name:'Client',email:'client@example.com'},meetingMode:'zoom',answers:{},bookingRequest:{current:null},
+  const context={profile:null,visit:{current:null},submittingRequest:{current:false},busy:false,demo:false,service:{id:'service'},slot:'2026-11-01T15:00:00Z',intake:{name:'Client',email:'client@example.com'},meetingMode:'zoom',answers:{},bookingRequest:{current:null},
     crypto:{randomUUID:()=>validToken},URL,Error,
     setSubmitting:v=>flags.push(v),setMessage:v=>messages.push(v),
     window:{location:{origin:'https://briefbooth.com',assign:v=>routes.push(v)}},
@@ -137,7 +137,7 @@ console.log('PASS clearing consultation/date resets stale slots and releases loa
 for (const outcome of ['success','reject']) {
   const requests=[], routes=[], messages=[];
   let resolve, reject;
-  const context={submittingRequest:{current:false},busy:false,demo:false,service:{id:'service',amount_cents:500},slot:'2026-11-01T15:00:00Z',intake:{name:'Client',email:'client@example.com'},meetingMode:'zoom',answers:{},bookingRequest:{current:null},crypto:{randomUUID:()=>validToken},Error,
+  const context={profile:null,visit:{current:null},submittingRequest:{current:false},busy:false,demo:false,service:{id:'service',amount_cents:500},slot:'2026-11-01T15:00:00Z',intake:{name:'Client',email:'client@example.com'},meetingMode:'zoom',answers:{},bookingRequest:{current:null},crypto:{randomUUID:()=>validToken},Error,
     setSubmitting:()=>{},setMessage:v=>messages.push(v),priceBreakdown:()=>({total:546}),stripeRedirect:url=>routes.push(url),
     paymentAction:(_action,args)=>{requests.push(args);return new Promise((yes,no)=>{resolve=yes;reject=no;});},db:()=>{throw Error('Paid booking bypassed checkout');}};
   const submit=handler('components/booking-client.tsx','submit',context);

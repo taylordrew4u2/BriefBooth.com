@@ -1,0 +1,9 @@
+"use client";
+import {useState} from 'react';
+import {db} from '@/lib/supabase';
+import {Button} from '@/components/ui/button';
+export function CalendarSubscription(){
+ const [link,setLink]=useState('');const [message,setMessage]=useState('');const [busy,setBusy]=useState(false);
+ async function change(disable=false,reset=false){setBusy(true);try{const {data,error}=await db().rpc('calendar_feed_link',{p_reset:reset,p_disable:disable});if(error)throw error;setLink(data||'');setMessage(disable?'Subscription disabled. Previously downloaded events may remain in your calendar.':reset?'A new link is ready. The old link no longer works.':'Your private subscription link is ready.');}catch{setMessage('Unable to update your calendar subscription.');}finally{setBusy(false);}}
+ return <section className="inset-form"><h3>Apple, Outlook & other calendars</h3><p>Subscribe to a private calendar feed to keep confirmed appointments updated in calendars that support subscription URLs. Your calendar controls refresh timing. This is one-way: it does not read busy times from Apple or Outlook.</p><p>The feed contains appointment titles and times, without client names, intake answers or meeting links. Anyone with the link can see it—keep it private.</p><Button disabled={busy} onClick={()=>change()}>Get private calendar link</Button>{link&&<><label>Subscription URL<input readOnly value={link} onFocus={e=>e.target.select()}/></label><p>In Apple Calendar, choose File → New Calendar Subscription. In Outlook on the web, choose Add calendar → Subscribe from web. Paste this URL.</p><Button variant="outline" disabled={busy} onClick={()=>change(false,true)}>Replace private link</Button></>}<Button variant="outline" disabled={busy} onClick={()=>change(true)}>Disable calendar subscription</Button><p role="status">{message}</p></section>;
+}

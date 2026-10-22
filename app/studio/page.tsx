@@ -1,4 +1,8 @@
 "use client";
+import { CalendarSubscription } from "@/components/calendar-subscription";
+import { AccountInsights } from "@/components/account-insights";
+import { BookingOperations } from "@/components/booking-operations";
+import { ScheduleControls } from "@/components/schedule-controls";
 import { PriceBreakdown } from "@/components/price-breakdown";
 import { PaymentSetup } from "@/components/payment-setup";
 import { money, priceBreakdown } from "@/lib/pricing";
@@ -32,6 +36,9 @@ type Booking = {
   service_id: string;
   manage_token: string;
   meeting_mode: string;
+  title_snapshot?: string;
+  outcome?: string|null;
+  consultant_notes?: string;
 };
 const dayNames = [
   "Sunday",
@@ -63,6 +70,7 @@ export default function Studio() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [editing, setEditing] = useState<Service|null>(null);
   const [adding, setAdding] = useState(false);
   const [amount, setAmount] = useState("0");
   const [bookingFilter, setBookingFilter] = useState("upcoming");
@@ -226,22 +234,21 @@ export default function Studio() {
     const f = new FormData(e.currentTarget);
     setMessage("");
     try {
-      const { data, error } = await db()
-        .from("services")
-        .insert({
+      const values = {
           owner_id: uid,
           title: String(f.get("title")),
           description: String(f.get("description")),
           duration: Number(f.get("duration")),
           amount_cents: Math.round(Number(f.get("amount") || 0) * 100),
           meeting_modes: String(f.get("meeting_modes")).split(","),
-        })
-        .select()
-        .single();
+        };
+      const query = editing ? db().from("services").update(values).eq("id",editing.id).eq("owner_id",uid) : db().from("services").insert(values);
+      const {data,error}=await query.select().single();
       if (error) throw error;
-      setServices([...services, data]);
+      setServices(editing ? services.map(s=>s.id===editing.id?data:s) : [...services,data]);
+      setEditing(null);
       setAdding(false);
-      setMessage("Consultation added.");
+      setMessage("Consultation saved. Existing appointment times and payments are unchanged.");
     } catch {
       setMessage("Couldn’t confirm the consultation was saved. Reload to check before adding it again.");
     } finally { setBusy(false); }
@@ -349,7 +356,7 @@ export default function Studio() {
               aria-current={tab === t ? "page" : undefined}
               className={tab === t ? "active" : ""}
             >
-              {{overview: "Overview", bookings: "Bookings", profile: "Profile & Zoom", questionnaire: "Intake questions", consultations: "Meeting types", availability: "Availability"}[t]}
+              {{overview: "Overview", bookings: "Bookings", profile: "Profile & connections", questionnaire: "Intake questions", consultations: "Meeting types", availability: "Availability"}[t]}
             </button>
           ))}
         </nav>
@@ -413,6 +420,7 @@ export default function Studio() {
             </div>
           </section>
         )}
+        {!loading && tab === "overview" && savedProfile && <AccountInsights/>}
         {message && (
           <div className="notice" role="status">
             {message}
@@ -500,6 +508,7 @@ export default function Studio() {
                   </label>
                   <ZoomConnection />
                   <GoogleConnection />
+                {savedProfile && <CalendarSubscription/>}
                   <label>
                     Backup Zoom meeting link{" "}
                     <span className="field-help">
@@ -598,7 +607,7 @@ export default function Studio() {
                     <h2>Your consultations</h2>
                     <p>Give clients a clear reason to book your time.</p>
                   </div>
-                  <Button onClick={() => setAdding(!adding)}>
+                  <Button onClick={() => {setEditing(null);setAmount("0");setAdding(!adding);}}>
                     {adding ? "Close form" : "+ Add consultation"}
                   </Button>
                 </div>
@@ -621,7 +630,8 @@ export default function Studio() {
                   <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save payment preferences"}</Button>
                 </form>
                 {adding && (
-                  <form className="inset-form" onSubmit={addService}>
+                  <form key={editing?.id || "new"} className="inset-form" onSubmit={addService}>
+                    <h3>{editing ? "Edit consultation" : "New consultation"}</h3>
                     <label>
                       Consultation name
                       <Input
@@ -629,11 +639,12 @@ export default function Studio() {
                         required
                         maxLength={100}
                         placeholder="Strategy session"
+                        defaultValue={editing?.title || ""}
                       />
                     </label>
                     <label>
                       Description
-                      <Textarea name="description" maxLength={500} rows={2} />
+                      <Textarea name="description" maxLength={500} rows={2} defaultValue={editing?.description || ""}/>
                     </label>
                     <label>Consultation amount (USD)
                       <Input name="amount" type="number" min="0" max="99999.99" step="0.01" required value={amount} onChange={e => setAmount(e.target.value)} />
@@ -642,7 +653,7 @@ export default function Studio() {
                     <PriceBreakdown amount={Math.round(Math.max(0, Math.min(99999.99, Number(amount) || 0)) * 100)} />
                     <label>
                       Duration
-                      <select name="duration" defaultValue="30">
+                      <select name="duration" defaultValue={editing?.duration || 30}>
                         {[15, 30, 45, 60, 90].map((n) => (
                           <option key={n} value={n}>
                             {n} minutes
@@ -654,7 +665,7 @@ export default function Studio() {
                       Meeting options
                       <select
                         name="meeting_modes"
-                        defaultValue="zoom,in_person"
+                        defaultValue={editing?.meeting_modes.join(",") || "zoom,in_person"}
                       >
                         <option value="zoom,in_person">
                           Let clients choose: in person or Zoom
@@ -667,7 +678,7 @@ export default function Studio() {
                       </select>
                     </label>
                     <Button type="submit" disabled={busy}>
-                      {busy ? "Adding…" : "Add consultation"}
+                      {busy ? "Saving…" : editing ? "Save consultation" : "Add consultation"}
                     </Button>
                   </form>
                 )}
@@ -701,6 +712,7 @@ export default function Studio() {
                       >
                         {s.active ? "Hide" : "Make available"}
                       </Button>
+                      <Button variant="outline" disabled={busy} onClick={()=>{setEditing(s);setAmount(String(s.amount_cents/100));setAdding(true);window.scrollTo({top:0,behavior:"auto"});}}>Edit {s.title}</Button>
                     </div>
                   ))
                 )}
@@ -710,10 +722,10 @@ export default function Studio() {
                 <div className="panel-heading">
                   <h2>Make time on your terms.</h2>
                   <p>
-                    Weekly hours repeat in your timezone. Bookings require two
-                    hours’ notice and open 60 days ahead.
+                    Weekly hours repeat in your timezone. Customize booking rules and individual dates below.
                   </p>
                 </div>
+                {savedProfile && <ScheduleControls owner={uid}/>}
                 <label>
                   Schedule timezone
                   <select
@@ -816,7 +828,7 @@ export default function Studio() {
                             {b.status === "pending_approval" ? "Awaiting approval" : b.status}
                           </span>
                           <h3>
-                            {services.find((s) => s.id === b.service_id)
+                            {b.title_snapshot || services.find((s) => s.id === b.service_id)
                               ?.title || "Consultation"}
                           </h3>
                           <p>
@@ -844,6 +856,7 @@ export default function Studio() {
                           )}
                         </div>
                         {b.status==="pending_approval" && <div className="manage-actions">{[true,false].map(approve=><Button variant={approve ? "default" : "outline"} key={String(approve)} type="button" aria-label={`${approve ? "Approve" : "Decline"} request for ${b.client_name}`} disabled={busy || refreshing} onClick={() => reviewRequest(b.id, approve)}>{approve?"Approve request":"Decline request"}</Button>)}</div>}
+                        <BookingOperations id={b.id} past={Date.parse(b.ends_at)<=now} status={b.status} email={b.client_email} title={b.title_snapshot||"Consultation"} initialOutcome={b.outcome} initialNotes={b.consultant_notes}/>
                         <a aria-label={`Manage booking for ${b.client_name}`} href={"/manage/" + b.manage_token}>
                           Manage booking ↗
                         </a>

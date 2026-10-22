@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { db } from "@/lib/supabase";
 import { pollSequentially } from "@/lib/polling";
 import { paymentAction, stripeRedirect } from "@/lib/payments";
+import { RescheduleBooking } from "./reschedule-booking";
 import { PriceBreakdown } from "./price-breakdown";
 import { calendarFile } from "@/lib/calendar";
 type Details = {
@@ -20,6 +21,7 @@ type Details = {
   in_person_address: string;
 };
 export default function Manage() {
+  const [now] = useState(()=>Date.now());
   const [token, setToken] = useState<string | null>(null);
   useEffect(() => {
     Promise.resolve().then(() =>
@@ -120,6 +122,7 @@ export default function Manage() {
               <p>Cancellation or decline does not automatically issue a refund. Contact your consultant about refunds.</p>
             </div> : !paymentError && <div className="inset-form"><h3>Arrange payment directly</h3><p>No online payment is attached to this booking.</p></div>}
             {paymentError && <p role="status">{paymentError}</p>}
+            {token && ['confirmed','pending_approval'].includes(booking.status) && Date.parse(booking.starts_at)>now && <RescheduleBooking token={token} start={booking.starts_at} onChanged={()=>setMessage('Time change requested. Refreshing booking status…')}/>}
             {booking.status === "pending_approval" && <Button disabled={busy} onClick={cancel}>Cancel request</Button>}
             {booking.status === "confirmed" && (
               <>

@@ -44,6 +44,13 @@ export default function Booking() {
   const [busy, setBusy] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [timezone, setTimezone] = useState("UTC");
+  const visit=useRef<string|null>(null);
+  useEffect(()=>{
+    if(!profile||demo||navigator.doNotTrack==='1')return;
+    if(!visit.current)visit.current=crypto.randomUUID();
+    const event=confirmed?'submitted':stage>=2?'schedule':(stage>=1||intakeStep>0)?'intake':'view';
+    void db().rpc('record_funnel',{p_owner:profile.id,p_visit:visit.current,p_stage:event});
+  },[profile,demo,stage,intakeStep,confirmed]);
   useEffect(() => { stepHeading.current?.focus(); }, [stage, intakeStep, confirmed]);
   useEffect(() => {
     if (slug === null) return;
@@ -203,12 +210,14 @@ export default function Booking() {
       };
       if (service.amount_cents > 0) {
         const result = await paymentAction("checkout", { booking, expected_total: priceBreakdown(service.amount_cents).total });
+        if(profile&&visit.current&&navigator.doNotTrack!=='1')void db().rpc('record_funnel',{p_owner:profile.id,p_visit:visit.current,p_stage:'submitted'});
         stripeRedirect(result.url);
         return;
       }
       const { data, error } = await db().rpc("book_consultation", booking);
       if (error) throw error;
       if (typeof data !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data)) throw new Error("We couldn’t verify the booking response. Please try again; your request will not be duplicated.");
+      if(profile&&visit.current&&navigator.doNotTrack!=='1')await Promise.race([Promise.resolve(db().rpc('record_funnel',{p_owner:profile.id,p_visit:visit.current,p_stage:'submitted'})).catch(()=>{}),new Promise(resolve=>setTimeout(resolve,500))]);
       window.location.assign(
         new URL("/manage/" + data + "/", window.location.origin).href,
       );

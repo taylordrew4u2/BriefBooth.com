@@ -42,12 +42,12 @@ Deno.serve(async req=>{
      const id=eventId(j.booking_id);const path='calendars/primary/events/'+id;
      if(j.booking_status!=='confirmed'){
       const d=await google(path,token,'DELETE');if(!d.ok&&d.status!==404&&d.status!==410)throw Error('Delete delayed');
-      await rpc('google_job_result',{p_booking:j.booking_id,p_url:null,p_event:id,p_cancelled:true});continue;
+      await rpc('google_job_result_v2',{p_booking:j.booking_id,p_revision:j.revision,p_url:null,p_event:id,p_cancelled:true});continue;
      }
      let r=await google(path,token);if(r.status===404)r=await google('calendars/primary/events?conferenceDataVersion=1',token,'POST',eventBody(j));
      if(r.status===409)r=await google(path,token);if(!r.ok)throw Error('Meeting delayed');
-     const event=await r.json();const url=meetingUrl(event);if(!url)throw Error('Meeting not ready');
-     await rpc('google_job_result',{p_booking:j.booking_id,p_url:url,p_event:id,p_cancelled:false});
+     let event=await r.json();if(event.start?.dateTime && (Date.parse(event.start.dateTime)!==Date.parse(j.starts_at)||Date.parse(event.end?.dateTime)!==Date.parse(j.ends_at))){const body=eventBody(j);const updated=await google(path,token,'PATCH',{start:body.start,end:body.end,summary:body.summary});if(!updated.ok)throw Error('Update delayed');event=await updated.json();}const url=meetingUrl(event);if(!url)throw Error('Meeting not ready');
+     await rpc('google_job_result_v2',{p_booking:j.booking_id,p_revision:j.revision,p_url:url,p_event:id,p_cancelled:false});
     }catch{await rpc('google_job_delay',{p_booking:j.booking_id});}
    }
    processed++;
