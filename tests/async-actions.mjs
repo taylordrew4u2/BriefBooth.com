@@ -152,3 +152,18 @@ const redirect=handler('lib/payments.ts','stripeRedirect',{URL,Error,window:{loc
 for(const bad of [null,'javascript:alert(1)','https://evil.example/','https://stripe.com.evil.example/','https://user@checkout.stripe.com/'])assert.throws(()=>redirect(bad));
 redirect('https://checkout.stripe.com/c/pay/example');assert.equal(redirectRoutes.length,1);
 console.log('PASS paid checkout amount, rapid-click guard, retry identity and Stripe-only redirects');
+
+// Base UI defaults to type=button; forms need explicit native submit semantics.
+for (const [file,label] of [['components/reschedule-booking.tsx','Request new time'],['components/booking-operations.tsx','Save outcome & notes']]) {
+  const source=ts.createSourceFile(file,fs.readFileSync(file,'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+  let button;
+  function visit(node) {
+    if(ts.isJsxElement(node)&&node.children.some(child=>ts.isJsxText(child)&&child.text.trim()===label)) button=node.openingElement;
+    ts.forEachChild(node,visit);
+  }
+  visit(source);
+  assert(button,`Missing ${label} button`);
+  const type=button.attributes.properties.find(attr=>ts.isJsxAttribute(attr)&&attr.name.text==='type');
+  assert.equal(type?.initializer?.text,'submit',`${label} must trigger the form handler`);
+}
+console.log('PASS rescheduling and appointment notes retain native form submission');
