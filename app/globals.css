@@ -2026,3 +2026,7 @@ body {
   .booth-sign { background: Canvas; color: CanvasText; border-color: CanvasText; }
   .client-booth .client-booking-list > article::before { background: CanvasText; }
 }
+.client-booth > h1 { font-size: clamp(2rem, 5vw, 3rem); font-weight: 700; line-height: 1.12; margin-bottom: 14px; }
+.client-booth > p:not(.booth-sign) { line-height: 1.6; margin-bottom: 20px; }
+.client-booth .client-booking-list { display: grid; gap: 20px; margin-top: 24px; }
+.client-booth .client-booking-list h2 { font-size: 1.35rem; font-weight: 700; line-height: 1.3; }
