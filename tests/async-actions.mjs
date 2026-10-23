@@ -8,9 +8,17 @@ import ts from 'typescript';
 function handler(file, name, context) {
   const source = ts.createSourceFile(file, fs.readFileSync(file,'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   let found;
-  function visit(node) { if(ts.isFunctionDeclaration(node) && node.name?.text === name) found=node; ts.forEachChild(node,visit); }
+  function visit(node) {
+    if(ts.isFunctionDeclaration(node) && node.name?.text === name) found=node;
+    if(ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === name && node.initializer && ts.isCallExpression(node.initializer) && node.initializer.expression.getText(source) === 'useCallback') {
+      const callback=node.initializer.arguments[0];
+      if(callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) found=callback;
+    }
+    ts.forEachChild(node,visit);
+  }
   visit(source); assert(found, `Missing handler ${name}`);
-  const js=ts.transpileModule(found.getText(source),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+  const definition=ts.isFunctionDeclaration(found)?found.getText(source):`const ${name} = ${found.getText(source)};`;
+  const js=ts.transpileModule(definition,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
   return vm.runInNewContext(`${js.replace(/^export /gm, "")}; ${name}`,context);
 }
 const cases=[['components/manage-client.tsx','cancel'],['app/studio/page.tsx','addService'],['app/studio/page.tsx','saveHours'],['app/account/page.tsx','savePassword']];
@@ -20,15 +28,17 @@ for(const [file,name] of cases) {
     const result={data:name==='cancel'?true:{id:'new'},error:null};
     const request=()=>reject?Promise.reject(new Error('network interrupted')):Promise.resolve(result);
     const context={
-      db:()=>({rpc:request,auth:{updateUser:request},from:()=>({insert:()=>({select:()=>({single:request})})})}),
+      db:()=>({rpc:rpcName=>rpcName==='account_role'?Promise.resolve({data:'consultant',error:null}):request(),auth:{updateUser:request},from:()=>({insert:()=>({select:()=>({single:request})})})}),
       setBusy:value=>busy.push(value),setMessage:value=>messages.push(value),
       setBooking:value=>bookings.push(value),setConfirm:()=>{},setTab:()=>{},
       setServices:()=>{},setAdding:()=>{},setSavedHours:()=>{},editing:null,setEditing:()=>{},
       token:'test-token',booking:{status:'confirmed'},savedProfile:{slug:'demo'},uid:'owner',services:[],
       hours:[{enabled:true,weekday:1,start_time:'09:00',end_time:'17:00'}],
-      router:{push:path=>routes.push(path)},
+      router:{push:path=>routes.push(path),replace:path=>routes.push(path)},
+      localStorage:{getItem:()=>null,removeItem:()=>{}},
       FormData:class {get(key){return {password:'test-only-placeholder',title:'Consultation',description:'Test',duration:'30',meeting_modes:'zoom'}[key];}},
     };
+    if(name==='savePassword') context.routeAccount=handler(file,'routeAccount',context);
     await handler(file,name,context)({preventDefault(){},currentTarget:{}});
     assert.deepEqual(busy,[true,false],`${name} must release busy after ${reject?'failure':'success'}`);
     if(reject) {
@@ -40,6 +50,37 @@ for(const [file,name] of cases) {
   }
 }
 console.log('PASS real cancel, add-consultation, availability, and recovery handlers: rejection releases busy, no false success, successful requests complete');
+
+// Recovery must use the real account-role callback rather than assuming every
+// verified account is a consultant. A recent client-booth intent also stays client-side.
+for(const outcome of ['consultant','client','client-intent','role-error','role-reject']) {
+  const busy=[],messages=[],routes=[],roleCalls=[],storageRemovals=[];
+  const context={
+    db:()=>({auth:{updateUser:async()=>({error:null})},rpc:async name=>{
+      roleCalls.push(name);
+      if(outcome==='role-reject') throw new Error('network interrupted');
+      return outcome==='role-error'?{data:null,error:{message:'Role lookup failed'}}:{data:outcome==='client'?'client':'consultant',error:null};
+    }}),
+    setBusy:value=>busy.push(value),setMessage:value=>messages.push(value),
+    router:{replace:path=>routes.push(path)},
+    localStorage:{getItem:key=>key==='briefbooth_client_login' && outcome==='client-intent'?String(Date.now()):null,removeItem:key=>storageRemovals.push(key)},
+    FormData:class {get(){return 'test-only-placeholder';}},
+  };
+  context.routeAccount=handler('app/account/page.tsx','routeAccount',context);
+  await handler('app/account/page.tsx','savePassword',context)({preventDefault(){},currentTarget:{}});
+  assert.deepEqual(busy,[true,false],`${outcome} recovery must release its busy state`);
+  assert.deepEqual(roleCalls,['account_role'],'Recovery checks the immutable backend account role after saving');
+  if(outcome.startsWith('role-')) {
+    assert.deepEqual(routes,[],'A failed account-role lookup must not guess a successful destination');
+    assert(messages.at(-1).length>10,'Account routing failures need actionable feedback');
+    assert.deepEqual(storageRemovals,[],'A failed lookup preserves the client-booth sign-in intent');
+  } else {
+    assert.deepEqual(routes,[outcome==='consultant'?'/studio':'/client']);
+    assert.deepEqual(storageRemovals,['briefbooth_client_login'],'Successful routing consumes the one-time client-booth intent');
+  }
+}
+console.log('PASS recovery routing follows verified account roles and client intent; failed role lookups do not redirect');
+
 
 for (const name of ['saveTimezone','toggleService','savePaymentPreferences']) {
   for (const outcome of ['success','reject','missing']) {

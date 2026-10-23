@@ -1,6 +1,7 @@
 "use client";
 import { CalendarSubscription } from "@/components/calendar-subscription";
 import { ProjectPlannerCard } from "@/components/project-planner-card";
+import { SendProjectPlanner } from "@/components/send-project-planner";
 import { AccountInsights } from "@/components/account-insights";
 import { BookingOperations } from "@/components/booking-operations";
 import { ScheduleControls } from "@/components/schedule-controls";
@@ -849,6 +850,7 @@ export default function Studio() {
                               {b.client_email}
                             </a>
                           </p>
+                          {profile.id === uid && <SendProjectPlanner ownerId={uid} bookingId={b.id} clientName={b.client_name} clientEmail={b.client_email} />}
                           <p>
                             {b.meeting_mode === "in_person"
                               ? "In-person consultation"

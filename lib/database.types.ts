@@ -54,6 +54,18 @@ type Table<Row, Insert = Partial<Row>> = {
   Update: Partial<Row>;
   Relationships: [];
 };
+export type ProjectPlannerDelivery = {
+  status: "not_sent" | "accepted" | "pending" | "uncertain" | "failed";
+  can_send: boolean;
+  recipient: string;
+  request_id?: string;
+  booking_id?: string;
+  created_at?: string | null;
+  accepted_at?: string | null;
+  next_attempt_at?: string | null;
+  cooldown_until: string | null;
+  last_error?: string | null;
+};
 export type Database = {
   public: {
     Tables: {
@@ -73,6 +85,8 @@ export type Database = {
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
     Functions: {
+      send_4u_project_planner: { Args: { p_booking: string; p_request: string }; Returns: ProjectPlannerDelivery };
+      get_4u_project_planner_status: { Args: { p_booking: string }; Returns: ProjectPlannerDelivery };
       account_role: { Args: Record<string, never>; Returns: "client" | "consultant" | null };
       client_intake: { Args: { p_booking: string }; Returns: { questions: IntakeQuestion[] | null; answers: Record<string,string> | null; notes: string; revision: number } };
       client_update_intake: { Args: { p_booking: string; p_revision: number; p_answers: Record<string,string>; p_notes: string }; Returns: undefined };

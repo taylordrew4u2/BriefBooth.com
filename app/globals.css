@@ -1971,6 +1971,32 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px
 .planner-message-preview > label { display: block; }
 .planner-message-preview textarea { resize: vertical; }
 
+/* A separate, explicit email action for each client; the draft never sends on its own. */
+.planner-client-send { margin: 14px 0; padding: 14px; border: 1px solid #ccc; border-radius: 10px; background: #fafafa; color: #222; min-width: 0; }
+.planner-client-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; }
+.planner-client-send [data-slot="button"] { min-height: 44px; height: auto; max-width: 100%; white-space: normal; background: #fff; color: #222; border: 1px solid #888; box-shadow: none; padding-block: 12px; }
+.planner-client-state { font-size: 12px; line-height: 1.6; color: #555; }
+.planner-status-refresh { min-height: 44px; font-size: 12px; }
+.planner-client-send .planner-client-helper { margin: 10px 0 0; color: #555; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.planner-client-send .planner-client-feedback { margin: 12px 0 0; padding: 10px 12px; border-left: 3px solid #555; background: #eee; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.planner-client-draft { margin-top: 16px; padding-top: 16px; border-top: 1px solid #ccc; }
+.planner-client-draft h4 { font-size: 16px; line-height: 1.5; margin: 0 0 8px; }
+.planner-client-draft > p { font-size: 13px; line-height: 1.7; margin: 0 0 14px; }
+.planner-email-addresses { display: grid; gap: 6px; margin: 12px 0 16px; font-size: 13px; line-height: 1.6; }
+.planner-email-addresses > div { display: grid; grid-template-columns: 3rem minmax(0, 1fr); gap: 8px; }
+.planner-email-addresses dt { color: #555; }
+.planner-email-addresses dd { margin: 0; overflow-wrap: anywhere; }
+.planner-client-draft > label { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 7px; }
+.planner-client-draft input, .planner-client-draft textarea { width: 100%; min-width: 0; font-size: 16px; }
+.planner-client-draft textarea { resize: vertical; }
+.planner-client-draft-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.planner-client-draft-actions [data-slot="button"]:first-child { background: #222; color: #fff; }
+@media (max-width: 700px) {
+  .planner-client-send { padding: 12px; }
+  .planner-client-toolbar > [data-slot="button"], .planner-client-draft-actions > [data-slot="button"] { width: 100%; }
+  .planner-client-draft-actions { flex-direction: column; }
+}
+
 /* A calm blue canvas keeps the working surfaces clear and readable. */
 body {
   background-color: #edf5ff;
