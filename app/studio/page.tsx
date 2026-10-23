@@ -1,5 +1,6 @@
 "use client";
 import { CalendarSubscription } from "@/components/calendar-subscription";
+import { ProjectPlannerCard } from "@/components/project-planner-card";
 import { AccountInsights } from "@/components/account-insights";
 import { BookingOperations } from "@/components/booking-operations";
 import { ScheduleControls } from "@/components/schedule-controls";
@@ -408,6 +409,7 @@ export default function Studio() {
             )}
           </section>
         )}
+        {!loading && profile?.id === uid && tab === "overview" && <ProjectPlannerCard ownerId={uid} />}
         {!loading && profile && tab === "overview" && (!savedProfile?.published || !services.some(s => s.active) || !savedHours) && (
           <section className="notice" aria-label="Booking page setup">
             <strong>Get your page ready to share</strong>

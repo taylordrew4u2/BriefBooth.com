@@ -1956,3 +1956,17 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px
 .intake-choice:focus-within { outline: 3px solid #333; outline-offset: 3px; }
 .intake-choice input[type="checkbox"] { width: 24px; height: 24px; min-width: 24px; margin: 0; accent-color: #0965c0; }
 .intake-choice span { font-weight: 600; overflow-wrap: anywhere; }
+
+/* The owner's 4u Digital planner is a separate, neutral client resource. */
+.project-planner-card { background: #f7f7f7; border-color: #d0d0d0; color: #222; }
+.project-planner-card > .studio-eyebrow { display: block; margin-bottom: 10px; color: #555; }
+.project-planner-card > label, .planner-message-preview > label { margin-bottom: 8px; font-size: 14px; font-weight: 600; }
+.project-planner-card input, .project-planner-card textarea { width: 100%; min-width: 0; font-size: 16px; }
+.project-planner-card [data-slot="button"] { min-height: 48px; background: #222; color: #fff; box-shadow: none; }
+.project-planner-card .planner-secondary-action, .project-planner-card .button.secondary { background: #fff; border: 1px solid #888; color: #222 !important; box-shadow: none; }
+.project-planner-card .planner-copy-feedback { margin: 12px 0 0; font-size: 14px; overflow-wrap: anywhere; }
+.project-planner-card .planner-copy-feedback:empty { display: none; }
+.planner-message-preview { margin-top: 16px; border-top: 1px solid #ccc; }
+.planner-message-preview > summary { cursor: pointer; padding: 14px 0; min-height: 48px; font-weight: 600; }
+.planner-message-preview > label { display: block; }
+.planner-message-preview textarea { resize: vertical; }
