@@ -324,7 +324,7 @@ export default function Studio() {
       <header className="studio-header">
         <Logo />
         <nav aria-label="Studio navigation">
-          <Link href="/book/demo">Booking demo ↗</Link>
+          <Link href="/book/demo">Booking demo ↗</Link><Link href="/client">My client bookings</Link>
           <button
             onClick={async () => {
               await db().auth.signOut();
@@ -582,10 +582,11 @@ export default function Studio() {
                         <Input required maxLength={200} value={q.label} onChange={e=>setProfile({...profile,intake_questions:profile.intake_questions.map(x=>x.id===q.id?{...x,label:e.target.value}:x)})}/>
                       </label>
                       <label>Answer format
-                        <select value={q.type} onChange={e=>setProfile({...profile,intake_questions:profile.intake_questions.map(x=>x.id===q.id?{...x,type:e.target.value as "short"|"long"}:x)})}>
-                          <option value="short">Short answer</option><option value="long">Long answer</option>
+                        <select value={q.type} onChange={e=>setProfile({...profile,intake_questions:profile.intake_questions.map(x=>x.id===q.id?{...x,type:e.target.value as "short"|"long"|"multiple",options:x.options||["Option 1","Option 2"]}:x)})}>
+                          <option value="short">Short answer</option><option value="long">Long answer</option><option value="multiple">Checkboxes — select all that apply</option>
                         </select>
                       </label>
+                      {q.type === "multiple" && <label>Choices (one per line, up to 12)<textarea required rows={5} value={(q.options||[]).join("\n")} onChange={e=>setProfile({...profile,intake_questions:profile.intake_questions.map(x=>x.id===q.id?{...x,options:e.target.value.split("\n")}:x)})}/></label>}
                       <label className="checkbox-label"><Input type="checkbox" checked={q.required} onChange={e=>setProfile({...profile,intake_questions:profile.intake_questions.map(x=>x.id===q.id?{...x,required:e.target.checked}:x)})}/>Required answer</label>
                       <div className="form-row">
                         <Button type="button" variant="outline" disabled={i===0} aria-label={`Move question ${i+1} up: ${q.label || "Untitled question"}`} onClick={()=>{const questions=[...profile.intake_questions];[questions[i-1],questions[i]]=[questions[i],questions[i-1]];setProfile({...profile,intake_questions:questions});}}>Move up</Button>

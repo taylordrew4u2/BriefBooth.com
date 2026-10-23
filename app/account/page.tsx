@@ -33,7 +33,7 @@ export default function Account() {
       db()
         .auth.getUser()
         .then(({ data }) => {
-          if (data.user) router.replace("/studio");
+          if (data.user) { const client = Date.now() - Number(localStorage.getItem("briefbooth_client_login") || 0) < 15 * 60 * 1000 || data.user.user_metadata?.account_type === "client"; localStorage.removeItem("briefbooth_client_login"); router.replace(client ? "/client" : "/studio"); }
         });
   }, [router]);
   async function submit(e: React.FormEvent<HTMLFormElement>) {
@@ -230,6 +230,7 @@ export default function Account() {
             </p>
           )}
           <div className="auth-switch">
+            <Link href="/client">Booked a consultation? Client sign in →</Link>
             <button
               onClick={() => {
                 setMessage("");

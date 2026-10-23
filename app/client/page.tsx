@@ -1,0 +1,19 @@
+"use client";
+import {useEffect,useState} from 'react';
+import Link from 'next/link';
+import {Logo} from '@/components/site-header';
+import {Button} from '@/components/ui/button';
+import {Input} from '@/components/ui/input';
+import {db,configured} from '@/lib/supabase';
+type Booking={id:string;title:string;consultant:string;starts_at:string;status:string;manage_token:string};
+export default function ClientAccount(){
+ const [email,setEmail]=useState('');const [signedIn,setSignedIn]=useState(false);const [loading,setLoading]=useState(true);const [busy,setBusy]=useState(false);const [message,setMessage]=useState('');const [bookings,setBookings]=useState<Booking[]>([]);
+ async function refresh(){
+  setLoading(true);setMessage('');
+  try{const {data,error}=await db().auth.getUser();if(error&&!error.message.includes('session missing'))throw error;if(!data.user){setSignedIn(false);setBookings([]);return;}setSignedIn(true);setEmail(data.user.email||'');const result=await db().rpc('client_bookings');if(result.error)throw result.error;setBookings(result.data as Booking[]);}
+  catch{setMessage('Could not load your bookings. Please try again.');}finally{setLoading(false);}
+ }
+ useEffect(()=>{queueMicrotask(()=>{if(configured)void refresh();else setLoading(false);});},[]);
+ async function login(e:React.FormEvent<HTMLFormElement>){e.preventDefault();setBusy(true);setMessage('');try{localStorage.setItem('briefbooth_client_login',String(Date.now()));const {error}=await db().auth.signInWithOtp({email:email.trim(),options:{emailRedirectTo:location.origin+'/account/',data:{account_type:'client'}}});if(error)throw error;setMessage('Check your email for your secure sign-in link. Use the same email you used to book. If you’re new, this creates your free client account.');}catch{setMessage('Could not send the sign-in link. Please wait a moment and try again.');}finally{setBusy(false);}}
+ return <><header className="simple-header"><Logo/><Link href="/account">Consultant sign in ↗</Link></header><main id="main" className="section-wrap" style={{maxWidth:800,padding:'48px 24px',margin:'0 auto'}}><h1>Your consultations</h1><p>Track requests, see meeting details, and manage your bookings.</p>{loading?<p role="status">Loading your account…</p>:signedIn?<><p>Signed in as {email}</p><div className="form-row"><Button onClick={()=>void refresh()}>Refresh bookings</Button><Button variant="outline" onClick={async()=>{await db().auth.signOut();setSignedIn(false);setBookings([]);}}>Sign out</Button></div>{bookings.length===0?<p>No bookings found for this email yet. Requests appear here when you book with this same address.</p>:<div className="client-booking-list">{bookings.map(b=><article className="inset-form" key={b.id}><p><strong>{b.status==='pending_approval'?'Awaiting consultant approval':b.status==='pending_payment'?'Payment pending':b.status==='confirmed'?'Confirmed':b.status==='declined'?'Declined':'Cancelled'}</strong></p><h2>{b.title}</h2><p>With {b.consultant}</p><p>{new Date(b.starts_at).toLocaleString(undefined,{dateStyle:'full',timeStyle:'short'})}</p><Link className="text-link" href={'/manage/'+b.manage_token+'/'}>View details & manage booking →</Link></article>)}</div>}</>:<section className="auth-card"><h2>Client sign in</h2><p>No password to remember. We’ll email a secure link to verify it’s you. Booking without an account is still available.</p><form onSubmit={login}><label>Email used for your booking<Input type="email" autoComplete="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label><Button type="submit" disabled={busy||!configured}>{busy?'Sending…':'Email me a sign-in link'}</Button></form><p>By creating an account you agree to our <Link href="/terms">terms</Link> and <Link href="/privacy">privacy notice</Link>.</p></section>}{message&&<p className="notice" role="status">{message}</p>}</main></>;
+}

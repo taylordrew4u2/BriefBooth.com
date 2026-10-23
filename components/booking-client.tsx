@@ -178,7 +178,7 @@ export default function Booking() {
       setIntake({ name: String(f.get("name")).trim(), email: String(f.get("email")).trim(), notes: "" });
     } else {
       const question = profile!.intake_questions[intakeStep - 1];
-      const answer = String(f.get("answer-" + question.id) || "").trim();
+      const answer = question.type === "multiple" ? f.getAll("answer-" + question.id).map(String).join("\n") : String(f.get("answer-" + question.id) || "").trim();
       if (question.required && !answer) { setMessage("Add a quick answer before continuing."); return; }
       setAnswers(previous => ({ ...previous, [question.id]: answer }));
     }
@@ -346,7 +346,7 @@ export default function Booking() {
                   </h2>
                   <p className="section-subtitle" id="intake-step-guidance">
                     {stage === 0
-                      ? intakeStep === 0 ? "A few quick answers, then we’ll find a time. No account needed." : "One question at a time. A sentence or two is plenty."
+                      ? intakeStep === 0 ? "A few quick answers, then we’ll find a time. No account needed." : profile.intake_questions[intakeStep - 1]?.type === "multiple" ? "Choose everything that fits. You can select more than one." : "One question at a time. A sentence or two is plenty."
                       : stage === 1
                         ? "Nice, your answers are ready. What would you like to book?"
                         : "Choose a date and an available time."}
@@ -550,7 +550,7 @@ export default function Booking() {
                           </label>
                         </div>}
                         {profile.intake_questions.filter((_, i) => i === intakeStep - 1).map(q => (
-                          <label key={q.id}>
+                          q.type === "multiple" ? <fieldset key={q.id} className="intake-choices" aria-describedby={`answer-help-${q.id}`}><legend className="sr-only">{q.label}</legend><p id={`answer-help-${q.id}`} className="field-help">Select all that apply. {q.required ? "Choose at least one." : "Optional."}</p>{q.options?.map(option => <label key={option} className="intake-choice"><input type="checkbox" name={"answer-" + q.id} value={option} checked={(answers[q.id] || "").split("\n").includes(option)} onChange={e => { const selected = new Set((answers[q.id] || "").split("\n").filter(Boolean)); if(e.target.checked) selected.add(option); else selected.delete(option); setAnswers({...answers,[q.id]:q.options!.filter(item=>selected.has(item)).join("\n")}); }}/><span>{option}</span></label>)}</fieldset> : <label key={q.id}>
                             Your answer <span id={`answer-help-${q.id}`} className="field-help">{q.required ? "Required answer" : "Optional — you can skip this question"}. Up to 1,500 characters.</span>
                             {q.type === "short" ? (
                               <Input aria-labelledby="intake-step-title" aria-describedby={`answer-help-${q.id}`} name={"answer-" + q.id} value={answers[q.id] || ""} onChange={e=>setAnswers({...answers,[q.id]:e.target.value})} required={q.required} maxLength={1500} />

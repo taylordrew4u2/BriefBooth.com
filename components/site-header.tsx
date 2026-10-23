@@ -15,7 +15,7 @@ export function SiteHeader() {
       <Logo />
       <nav aria-label="Main navigation">
         <Link href="/#how-it-works">How it works</Link>
-        <Link href="/book/demo">Try booking</Link>
+        <Link href="/client">My bookings</Link>
         <Link href="/account" className="nav-signin">
           Sign in
         </Link>

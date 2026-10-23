@@ -1948,3 +1948,11 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px
   .booking-experience .booking-journey { display:grid; grid-template-columns:1fr; gap:8px; }
   .booking-experience .booking-journey li { flex-direction:row; text-align:left; font-size:14px; }
 }
+
+/* Native checkboxes keep multi-topic intake keyboard and screen-reader accessible. */
+.intake-choices { border: 0; padding: 0; margin: 0; display: grid; gap: 12px; min-width: 0; }
+.intake-choice { display: flex; align-items: center; gap: 14px; padding: 18px; border: 2px solid #b4b4b4; border-radius: 16px; cursor: pointer; background: white; color: #333; }
+.intake-choice:has(input:checked) { border-color: #137fec; background: #eaf4ff; }
+.intake-choice:focus-within { outline: 3px solid #333; outline-offset: 3px; }
+.intake-choice input[type="checkbox"] { width: 24px; height: 24px; min-width: 24px; margin: 0; accent-color: #0965c0; }
+.intake-choice span { font-weight: 600; overflow-wrap: anywhere; }

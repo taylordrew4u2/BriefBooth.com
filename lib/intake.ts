@@ -1,7 +1,8 @@
 export type IntakeQuestion = {
   id: string;
   label: string;
-  type: "short" | "long";
+  type: "short" | "long" | "multiple";
+  options?: string[];
   required: boolean;
 };
 export const defaultQuestions: IntakeQuestion[] = [
@@ -36,7 +37,7 @@ export const intakeTemplates: IntakeTemplate[] = [
   },
   {
     id: "software-development", name: "App, web & full-stack development", description: "Plan a new build, improve an existing app, or get help with a bug. No technical expertise needed.",
-    questions: [question("What would you like to build, improve, or fix?", true), question("Who will use it, and what is the main thing they should be able to do?"), question("Do you have an existing website, app, designs, or a tech stack? Share any useful context or public links—no passwords or API keys."), question("Do you have a target launch date or budget range in mind?", false, "short")],
+    questions: [{ label: "What do you need help with?", type: "multiple", required: true, options: ["Software", "Website", "Web application", "Mobile application", "Automation & integrations", "Fixes & improvements", "Other / not sure yet"] }, question("What would you like to build, improve, or fix?"), question("Who will use it, and what is the main thing they should be able to do?"), question("Do you have an existing website, app, designs, or a tech stack? Share any useful context or public links—no passwords or API keys."), question("Do you have a target launch date or budget range in mind?", false, "short")],
   },
   {
     id: "design", name: "Design & branding", description: "Explore the brand, audience, and creative direction.",

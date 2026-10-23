@@ -22,7 +22,7 @@ export function IntakeTemplatePicker({ questions, onChange }: {
   return (
     <section className="intake-template-picker" aria-labelledby="template-heading">
       <h3 id="template-heading">Start with a template</h3>
-      <p>Four friendly questions, with only the first required. Make them your own.</p>
+      <p>A few friendly questions, with only the first required. Make them your own.</p>
       <label>
         Consultant specialty
         <select value={selected} onChange={event => { setSelected(event.target.value); setNotice(""); }}>
@@ -31,7 +31,7 @@ export function IntakeTemplatePicker({ questions, onChange }: {
       </label>
       <p className="field-help">{template.description}</p>
       <ol className="template-preview">
-        {template.questions.map(q => <li key={q.label}>{q.label}<span>{q.required ? "Required" : "Optional"}</span></li>)}
+        {template.questions.map(q => <li key={q.label}>{q.label}{q.options && <p className="field-help">Select all that apply: {q.options.join(", ")}</p>}<span>{q.required ? "Required" : "Optional"}</span></li>)}
       </ol>
       <p className="field-help">Replacing changes your draft questions. Your shared page updates only after you click Save questionnaire.</p>
       <div className="template-actions">
@@ -41,7 +41,7 @@ export function IntakeTemplatePicker({ questions, onChange }: {
           onChange(previous); setPrevious(null); setNotice("Previous draft restored. Save when you’re ready.");
         }}>Undo template</Button>}
       </div>
-      {!fits && <p className="field-help">This template needs four open question slots. Remove questions below or replace the draft.</p>}
+      {!fits && <p className="field-help">This template needs {template.questions.length} open question slots. Remove questions below or replace the draft.</p>}
       {notice && <p role="status" className="notice">{notice}</p>}
     </section>
   );

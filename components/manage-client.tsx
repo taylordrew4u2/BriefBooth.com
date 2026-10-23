@@ -217,6 +217,7 @@ export default function Manage() {
         ) : (
           <h1>Booking unavailable</h1>
         )}
+        <p><a className="text-link" href="/client/">Client sign in — see all your bookings →</a></p>
         {loadError && <div className="notice" role="status">{loadError}</div>}
         {message && (
           <p role="status" className="notice">

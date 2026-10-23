@@ -73,6 +73,7 @@ export type Database = {
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
     Functions: {
+      client_bookings: { Args: Record<string, never>; Returns: { id: string; title: string; consultant: string; starts_at: string; status: string; manage_token: string }[] };
       record_booking_outcome: {Args:{p_booking:string;p_outcome:string|null;p_notes:string};Returns:undefined};
       booking_health: {Args:{p_booking:string};Returns:unknown};
       retry_booking_delivery: {Args:{p_booking:string};Returns:undefined};
