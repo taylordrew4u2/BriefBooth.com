@@ -35,3 +35,11 @@ The recording-provider tests verify recipient, unchanged-save suppression, studi
 Account roles are now assigned once on signup in a private table. Client accounts cannot create consultant profiles, and changing editable user metadata does not promote them. Existing consultant profiles retain consultant access. The studio checks the trusted role before loading setup controls; account sign-in routes clients to their bookings. The client header now offers Home instead of a looping consultant-login link. Tests cover role assignment, client profile-creation denial, metadata tampering and preserved consultant access.
 
 A soft blue gradient canvas, white reading surfaces, small client-booth sign and striped canopy accents add BriefBooth identity. No motion or additional service was introduced; forced-colors styles preserve system contrast. The existing 4u Digital project-planner card remains included.
+
+## Simpler free-consultation intake — October 23
+
+4u Digital's live profile now requires only name, email and project type. The other five discovery questions are optional; existing question IDs, choices (including Other / not sure yet), and historical booking snapshots are preserved. The profile and active service explain that rough ideas are welcome and the detailed planner is optional. NYC business visits can help with unclear requirements, physical spaces or workflows, by arrangement. The single active free 30-minute Google Meet service, approval mode and availability are unchanged.
+
+The booking review shows “Free consultation” and “No payment is needed” when the service has no price and the consultant has no external-payment methods or notes. Existing external-payment guidance and Stripe-priced checkout remain unchanged. No backend code, admin controls or planner-email behavior changed.
+
+Validation: lint, full automated suite and production build passed. Published the 106-file release on existing Cloudflare Pages Free, preserving review video and domain-verification assets. Production Pages route/header checks passed. Live browser verification selected Other / not sure yet, skipped all five optional questions and reached an available Google Meet time with the correct free consultation and approval copy. Stopped before Send consultation request; no booking or email was created.

@@ -497,11 +497,14 @@ export default function Booking() {
                               {service && service.amount_cents > 0 ? <div className="inset-form">
                                 <PriceBreakdown amount={service.amount_cents} />
                                 <p>{profile.booking_mode === "approval" ? "Pay now to send your request. Your consultant must still approve it before the meeting is confirmed. If declined, contact the consultant for a refund." : "Your booking is confirmed after Stripe verifies payment."} Cancellations do not automatically refund payments. Your consultant handles refunds.</p>
-                              </div> : <div className="inset-form">
+                              </div> : profile.payment_methods?.length || profile.payment_notes?.trim() ? <div className="inset-form">
                                 <h3>Negotiate with consultant</h3>
                                 <p>{profile.booking_mode === "approval" ? "Your consultant must approve this request before the meeting is confirmed. " : ""}Free to book. No payment is collected here. Agree on any consultation fee directly with your consultant.</p>
                                 {!!profile.payment_methods?.length && <p><strong>Accepted methods:</strong> {profile.payment_methods.join(", ")}</p>}
                                 {profile.payment_notes && <p style={{whiteSpace: "pre-wrap"}}>{profile.payment_notes}</p>}
+                              </div> : <div className="inset-form">
+                                <h3>Free consultation</h3>
+                                <p>No payment is needed for this consultation.{profile.booking_mode === "approval" ? " Your consultant will review your request before confirming the meeting." : " Choose Confirm booking to reserve this time."}</p>
                               </div>}
                               <Button
                                 className="form-submit"
