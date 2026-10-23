@@ -80,6 +80,13 @@ export default function Studio() {
   const [refreshing, setRefreshing] = useState(false);
   const bookingAction = useRef(false);
   useEffect(() => {
+    if (!configured) return;
+    const { data } = db().auth.onAuthStateChange(event => {
+      if (event === "SIGNED_OUT") { setProfile(null); setBookings([]); router.replace("/account/"); }
+    });
+    return () => data.subscription.unsubscribe();
+  }, [router]);
+  useEffect(() => {
     if (!configured) {
       router.replace("/account");
       return;
@@ -329,14 +336,7 @@ export default function Studio() {
         <Logo />
         <nav aria-label="Studio navigation">
           <Link href="/book/demo">Booking demo ↗</Link><Link href="/client">My client bookings</Link>
-          <button
-            onClick={async () => {
-              await db().auth.signOut();
-              router.push("/");
-            }}
-          >
-            Sign out
-          </button>
+          <Link href="/logout/?from=consultant">Sign out</Link>
         </nav>
       </header>
       <main id="main" className="studio-shell">
