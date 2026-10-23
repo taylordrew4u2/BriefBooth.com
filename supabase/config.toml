@@ -1,0 +1,6 @@
+[functions.payments]
+verify_jwt = false
+
+# Callback authenticates via a single-use, expiring OAuth state.
+[functions.zoom]
+verify_jwt = false
