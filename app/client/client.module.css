@@ -28,3 +28,6 @@
 .terms { font-size: 13px; margin-top: 20px; }
 @media(max-width:640px) { .page { padding: 36px 20px 64px; } .heading { display: block; } .account { text-align: left; margin-top: 24px; } .controls { justify-content: flex-start; } .booking { padding: 20px; gap: 16px; grid-template-columns: 60px minmax(0,1fr); } .date { padding-right: 10px; } .date strong { font-size: 32px; } .login { padding: 24px; } }
 @media(forced-colors:active) { .page,.status { color: CanvasText; } .booking,.empty,.login { background: Canvas; border-color: CanvasText; } .action { background: Highlight; color: HighlightText; } }
+.login button[type='submit'] { background: #154d84; color: white; min-height: 48px; border-radius: 5px; font-weight: 600; }
+.login button[type='submit']:hover { background: #0d365e; }
+.login a { text-decoration: underline; text-underline-offset: 3px; }
