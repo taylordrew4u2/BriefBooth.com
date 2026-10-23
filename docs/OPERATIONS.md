@@ -97,11 +97,14 @@ Clients answer intake questions before scheduling. Pending approval requests res
 
 Booking-related messages are private snapshots queued for both parties. They include intake context, appointment time/timezone, and only the selected meeting format’s details. The worker runs on a private schedule and sends bounded batches through Brevo.
 
+Booking notifications send matching HTML and plain-text alternatives from the authenticated `no-reply@briefbooth.com` sender. Replies go to the public BriefBooth support address, `admin@customtechbuilt4u.com`; this does not expose a consultant's private sign-in email. Client request receipts clearly say approval is pending and omit the full questionnaire. The consultant's notification retains the submitted intake snapshot. Private booking/studio buttons use first-party URLs and client-entered text is HTML-escaped.
+
 - Booking retries must not enqueue duplicate message pairs.
 - Known rate limits wait; no paid fallback is enabled.
 - Credential failures require credential repair.
 - Ambiguous network/server outcomes are marked uncertain for provider-log review rather than blindly retried.
 - `accepted` means the provider accepted the request; it does not guarantee delivery to an inbox.
+- To verify delivery, send labeled disposable requests to owned test addresses, including any forwarded business mailbox. Inspect actual MIME alternatives, SPF/DKIM/DMARC results and Inbox/Spam labels. A successful sample does not guarantee every recipient's inbox placement.
 - Cancellation and past-booking checks prevent inappropriate queued confirmations from being sent.
 - Delivery records are retained for 30 days under the implemented cleanup behavior.
 
