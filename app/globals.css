@@ -1790,7 +1790,9 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px
 .booking-filters { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:24px; }
 .booking-filters button { padding:10px 14px; min-height:44px; border:1px solid #e5e7eb; border-radius:24px; font-size:12px; }
 .booking-filters button[aria-pressed=true] { color:#145aa1; background:#e7f2fe; border-color:#b4d6fa; }
-.studio-content .booking-record { overflow-wrap:anywhere; }
+.studio-content .booking-record { display:grid; grid-template-columns:minmax(0,1fr); gap:16px; overflow-wrap:anywhere; }
+.studio-content .booking-record > * { min-width:0; }
+.studio-content .booking-record > a { justify-self:start; max-width:100%; white-space:normal; }
 @media(max-width:760px) {
  .studio-workspace { grid-template-columns:minmax(0,1fr); gap:20px; }
  .studio-workspace .studio-tabs { position:static; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); padding:6px; gap:4px; }
