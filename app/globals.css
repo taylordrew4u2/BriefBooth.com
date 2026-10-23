@@ -1970,3 +1970,59 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px
 .planner-message-preview > summary { cursor: pointer; padding: 14px 0; min-height: 48px; font-weight: 600; }
 .planner-message-preview > label { display: block; }
 .planner-message-preview textarea { resize: vertical; }
+
+/* A calm blue canvas keeps the working surfaces clear and readable. */
+body {
+  background-color: #edf5ff;
+  background-image: radial-gradient(ellipse at 8% 0%, #c7e2ff 0, transparent 48%), radial-gradient(ellipse at 95% 35%, #d6e7ff 0, transparent 50%), linear-gradient(155deg, #f7fbff 0%, #edf5ff 55%, #dcecff 100%);
+  min-height: 100vh;
+}
+.booking-shell { background: transparent; }
+.simple-header, .studio-header { background: #ffffffed; border-bottom: 1px solid #c9d9ec; }
+.client-booking-list > .inset-form, .studio-panel, .booking-layout, .auth-card {
+  background: #fff;
+  border-color: #c6d8ee;
+  box-shadow: 0 12px 36px #174d8d0d;
+}
+.client-booking-list > .inset-form { border-top: 4px solid #137fec; }
+@media (forced-colors: active) {
+  body { background: Canvas; }
+  .simple-header, .studio-header, .client-booking-list > .inset-form, .studio-panel, .booking-layout, .auth-card { background: Canvas; border-color: CanvasText; box-shadow: none; }
+}
+/* BriefBooth's small booth sign and canopy frame the conversation. */
+.booth-sign {
+  display: inline-flex;
+  align-items: center;
+  gap: .65rem;
+  margin: 0 0 1rem;
+  padding: .5rem .9rem;
+  border: 1px solid #9cc6f4;
+  border-radius: 999px;
+  background: #e0efff;
+  color: #154e87;
+  font-size: .8rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.booth-sign::before { content: ''; width: .55rem; height: .55rem; border-radius: 50%; background: #137fec; }
+.client-booth > h1 { letter-spacing: -.035em; }
+.client-booth .client-booking-list > article {
+  position: relative;
+  border-top: 0;
+  border-radius: 20px;
+  overflow: hidden;
+  padding-top: 32px;
+}
+.client-booth .client-booking-list > article::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 9px;
+  background: repeating-linear-gradient(90deg, #137fec 0 28px, #cfe6ff 28px 56px);
+}
+.booking-brand { border-top: 6px solid #137fec; }
+.studio-title { border-left: 4px solid #137fec; padding-left: 20px; }
+@media (forced-colors: active) {
+  .booth-sign { background: Canvas; color: CanvasText; border-color: CanvasText; }
+  .client-booth .client-booking-list > article::before { background: CanvasText; }
+}

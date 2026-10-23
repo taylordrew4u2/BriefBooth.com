@@ -93,6 +93,9 @@ export default function Studio() {
           router.replace("/account");
           return;
         }
+        const role = await db().rpc("account_role");
+        if (role.error) throw role.error;
+        if (role.data !== "consultant") { router.replace("/client"); return; }
         setSiteOrigin(window.location.origin);
         setUid(user.id);
         if (new URLSearchParams(window.location.search).has("stripe")) setTab("consultations");

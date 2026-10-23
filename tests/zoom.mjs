@@ -348,4 +348,18 @@ await db.query('select client_update_intake($1,1,$2,$3)',[b.id,JSON.stringify({t
 assert.equal((await db.query('select client_intake($1) d',[b.id])).rows[0].d.answers.topics,'Software\nWebsite');
 await db.exec('set role anon');await assert.rejects(()=>db.query('select client_intake($1)',[b.id]),/permission denied/);await db.exec('reset role');
 console.log('PASS client intake editing: ownership, stale-write protection, legacy preservation, checkbox validation');
+await db.exec("alter table auth.users add column raw_user_meta_data jsonb default '{}'::jsonb");
+await db.query("update auth.users set raw_user_meta_data='{\"account_type\":\"client\"}' where id=$1",[clientUid]);
+await db.exec(readFileSync('supabase/migrations/20261023200000_account_roles.sql','utf8'));
+await db.exec('set role authenticated');
+assert.equal((await db.query('select account_role() role')).rows[0].role,'client');
+await assert.rejects(()=>db.query("insert into profiles(id,slug,name) values($1,'forbidden-client','Client')",[clientUid]),/Client accounts cannot/);
+await db.exec('reset role');
+await db.query("update auth.users set raw_user_meta_data='{}' where id=$1",[clientUid]);
+assert.equal((await db.query('select account_role() role')).rows[0].role,'client','Metadata edits cannot promote a client');
+await db.query("select set_config('request.jwt.claim.sub',$1,false)",[owner]);
+assert.equal((await db.query('select account_role() role')).rows[0].role,'consultant','Existing consultant retains access');
+await db.query("insert into auth.users(id,email,raw_user_meta_data) values('00000000-1111-4000-8000-000000000009','newclient@example.com','{\"account_type\":\"client\"}')");
+assert.equal((await db.query("select role from briefbooth_private.account_roles where user_id='00000000-1111-4000-8000-000000000009'")).rows[0].role,'client');
+console.log('PASS immutable client roles, blocked consultant profile creation, preserved consultant access');
 await db.close();

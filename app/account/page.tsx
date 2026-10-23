@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "@/components/site-header";
@@ -13,6 +13,13 @@ export default function Account() {
   const [mode, setMode] = useState("signin");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const routeAccount = useCallback(async () => {
+    const role = await db().rpc("account_role");
+    if (role.error) { setMessage("Could not load your account. Please reload and try again."); return; }
+    const clientIntent = Date.now() - Number(localStorage.getItem("briefbooth_client_login") || 0) < 15 * 60 * 1000;
+    localStorage.removeItem("briefbooth_client_login");
+    router.replace(role.data === "consultant" && !clientIntent ? "/studio" : "/client");
+  }, [router]);
   useEffect(() => {
     if (previousMode.current !== mode) formHeading.current?.focus();
     previousMode.current = mode;
@@ -33,9 +40,9 @@ export default function Account() {
       db()
         .auth.getUser()
         .then(({ data }) => {
-          if (data.user) { const client = Date.now() - Number(localStorage.getItem("briefbooth_client_login") || 0) < 15 * 60 * 1000 || data.user.user_metadata?.account_type === "client"; localStorage.removeItem("briefbooth_client_login"); router.replace(client ? "/client" : "/studio"); }
+          if (data.user) void routeAccount();
         });
-  }, [router]);
+  }, [router, routeAccount]);
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy(true);
@@ -53,7 +60,7 @@ export default function Account() {
       } else if (mode === "signup") {
         const { data, error } = await db().auth.signUp({ email, password, options: { emailRedirectTo: location.origin + "/account/" } });
         if (error) throw error;
-        if (data.session) router.push("/studio");
+        if (data.session) await routeAccount();
         else
           setMessage("Check your email to confirm your account, then sign in.");
       } else {
@@ -62,7 +69,7 @@ export default function Account() {
           password,
         });
         if (error) throw error;
-        router.push("/studio");
+        await routeAccount();
       }
     } catch (e) {
       setMessage(
@@ -87,7 +94,7 @@ export default function Account() {
         password: String(new FormData(e.currentTarget).get("password")),
       });
       if (error) setMessage(error.message);
-      else router.push("/studio");
+      else await routeAccount();
     } catch { setMessage("Couldn’t save your password. Check your connection and try again."); }
     finally { setBusy(false); }
   }

@@ -29,3 +29,9 @@ Validated the editing migration with authenticated ownership/anonymous denial, r
 A client save that changes the saved intake text now queues an `intake_consultant` notification. It names the client/consultation and links to the authenticated studio to read the latest intake; it does not copy the answers into another email. Unchanged saves send nothing. Intake revisions have independent idempotency keys, leaving meeting/reschedule revisions intact. The existing email worker, daily free-plan cap, retries and uncertain-delivery handling remain in use. Notifications apply at any booking status, matching the anytime-editing feature.
 
 The recording-provider tests verify recipient, unchanged-save suppression, studio action, real worker eligibility, and preserved quota behavior. Applied live and exercised the client-edit RPC against the disposable canceled booking. The worker accepted the notification, and its actual arrival and studio link were verified in the consultant Gmail inbox on October 23. No frontend deployment was required for this database-trigger feature.
+
+## Client/consultant separation and booth theme
+
+Account roles are now assigned once on signup in a private table. Client accounts cannot create consultant profiles, and changing editable user metadata does not promote them. Existing consultant profiles retain consultant access. The studio checks the trusted role before loading setup controls; account sign-in routes clients to their bookings. The client header now offers Home instead of a looping consultant-login link. Tests cover role assignment, client profile-creation denial, metadata tampering and preserved consultant access.
+
+A soft blue gradient canvas, white reading surfaces, small client-booth sign and striped canopy accents add BriefBooth identity. No motion or additional service was introduced; forced-colors styles preserve system contrast. The existing 4u Digital project-planner card remains included.
