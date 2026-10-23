@@ -4,7 +4,7 @@
 .heading p { font-size: 17px; line-height: 1.6; max-width: 560px; }
 .account { display: grid; gap: 12px; text-align: right; font-size: 13px; overflow-wrap: anywhere; }
 .controls { display: flex; gap: 16px; justify-content: flex-end; }
-.controls button { background: none; border: 0; padding: 8px 0; color: #174f86; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; }
+.controls button, .controls a { background: none; border: 0; padding: 8px 0; color: #174f86; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; }
 .sectionTitle { font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; margin: 32px 0 16px; }
 .list { display: grid; gap: 22px; }
 .booking { display: grid; grid-template-columns: 92px minmax(0,1fr); background: #fff; border: 1px solid #b7cbe1; border-radius: 8px; padding: 28px; gap: 28px; box-shadow: 0 8px 24px #214e7b08; }
