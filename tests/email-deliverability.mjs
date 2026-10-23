@@ -153,13 +153,35 @@ assert.equal((await db.query("select count(*)::int n from briefbooth_private.boo
 await db.query('select briefbooth_private.send_booking_emails()');
 assert.equal((await db.query("select count(*)::int n from briefbooth_private.booking_emails where status='uncertain'")).rows[0].n, 1);
 
+// Intake edits notify only the consultant and do not alter booking lifecycle revisions.
+await db.exec("alter table auth.users add column email_confirmed_at timestamptz");
+await db.exec(readFileSync('supabase/migrations/20261023180000_multiple_choice_intake.sql','utf8'));
+await db.exec(readFileSync('supabase/migrations/20261023190000_client_intake_edits.sql','utf8'));
+await db.exec(readFileSync('supabase/migrations/20261023173000_email_queue_cleanup.sql','utf8'));
+await db.exec(readFileSync('supabase/migrations/20261023193000_intake_update_notifications.sql','utf8'));
+await db.query("update bookings set notes='Updated answers',intake_revision=1 where id=$1",[pending.id]);
+const intakeMail=(await db.query("select * from briefbooth_private.booking_emails where booking_id=$1 and recipient_kind='intake_consultant'",[pending.id])).rows[0];
+assert.equal(intakeMail.recipient,'consultant@example.com');assert.equal(intakeMail.revision,1);
+await db.query("update bookings set notes='Updated answers',intake_revision=2 where id=$1",[pending.id]);
+assert.equal((await db.query("select count(*)::int n from briefbooth_private.booking_emails where recipient_kind='intake_consultant'")).rows[0].n,1,'Unchanged answers do not send another email');
+const editPayload=await payloadFor(pending.id,'intake_consultant');
+assert.match(editPayload.htmlContent,/Your client updated their intake answers/);
+assert.match(editPayload.htmlContent,/href="https:\/\/briefbooth.com\/studio\/"/);
+assert(!editPayload.textContent.includes('Updated answers'),'Notification does not disclose answers');
+await db.query("select set_config('test.http','201',false)");
+await db.query('select briefbooth_private.skip_obsolete_booking_emails()');
+assert.equal((await db.query('select status from briefbooth_private.booking_emails where id=$1',[intakeMail.id])).rows[0].status,'pending');
+await db.query('select briefbooth_private.send_booking_emails()');
+assert.equal((await db.query('select status from briefbooth_private.booking_emails where id=$1',[intakeMail.id])).rows[0].status,'accepted');
+console.log('PASS intake notification: consultant recipient, unchanged-save suppression, trusted studio link, worker delivery');
+
 // The shared daily cap is still enforced before HTTP, including the new format.
 await db.query("update briefbooth_private.booking_emails set status='pending',next_attempt_at=now() where status='pending'");
 // Fixture-only historical revisions represent the other emails accepted today.
 // Disable the snapshot trigger only while seeding this synthetic prior history.
 await db.exec('alter table briefbooth_private.booking_emails disable trigger email_revision');
 await db.query(`insert into briefbooth_private.booking_emails(booking_id,recipient_kind,recipient,subject,body,status,accepted_at,revision)
- select $1,'reminder_client','fixture@example.com','Old accepted fixture','Fixture','accepted',now(),n from generate_series(100,338)n`, [confirmed.id]);
+ select $1,'reminder_client','fixture@example.com','Old accepted fixture','Fixture','accepted',now(),n from generate_series(100,339)n`, [confirmed.id]);
 await db.exec('alter table briefbooth_private.booking_emails enable trigger email_revision');
 const countBefore = (await db.query('select count(*)::int n from public.test_email_requests')).rows[0].n;
 await db.query('select briefbooth_private.send_booking_emails()');

@@ -23,3 +23,9 @@ Clients now have **Edit my answers** on each booking in `/client/`, at any booki
 The developer template and 4u Digital's live questionnaire include an optional technical-background question covering complete beginners, basic familiarity, no-code/developer collaboration, coding experience, and experienced developers. Multiple descriptions may apply.
 
 Validated the editing migration with authenticated ownership/anonymous denial, required values, invalid checkbox choices, legacy edits, persistence, and stale-write tests. Lint, build and production Pages checks passed. Live browser verification saved and reopened an update on the disposable canceled appointment, then confirmed that update in consultant admin. The experience question was also verified on the production booking page. Existing free hosting and services remain unchanged.
+
+## Consultant email for changed answers
+
+A client save that changes the saved intake text now queues an `intake_consultant` notification. It names the client/consultation and links to the authenticated studio to read the latest intake; it does not copy the answers into another email. Unchanged saves send nothing. Intake revisions have independent idempotency keys, leaving meeting/reschedule revisions intact. The existing email worker, daily free-plan cap, retries and uncertain-delivery handling remain in use. Notifications apply at any booking status, matching the anytime-editing feature.
+
+The recording-provider tests verify recipient, unchanged-save suppression, studio action, real worker eligibility, and preserved quota behavior. Applied live and exercised the client-edit RPC against the disposable canceled booking. The worker accepted the notification, and its actual arrival and studio link were verified in the consultant Gmail inbox on October 23. No frontend deployment was required for this database-trigger feature.
