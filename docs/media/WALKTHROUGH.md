@@ -20,3 +20,12 @@ The demo uses Alex Morgan, a fictional consultant, and Jordan Lee / jordan@examp
 - Video opens from the README poster link; GitHub may show a download link rather than an inline player.
 
 Media is documentation only and is not copied into the deployed website, keeping normal page loads light.
+
+## October 24 live screenshot refresh
+
+- `home-desktop-2026-10-24.png`: public homepage, desktop browser.
+- `home-mobile-2026-10-24.png`: same homepage, 390 × 844 phone viewport.
+- `project-types-desktop.png`: 4u Digital public intake with Software, Website and Mobile application selected.
+- `project-types-mobile.png`: same selections at 390 × 844; the page scrolls to expose the remaining choices and controls.
+
+These images were captured from briefbooth.com. The intake used Alex Example / alex@example.com and stopped before booking submission. No private account screen, management token, or OAuth consent screen is included. The MP4 remains the explicitly dated October 19 walkthrough, not a recording of the October 24 release.

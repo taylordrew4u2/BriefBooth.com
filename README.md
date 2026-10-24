@@ -12,7 +12,7 @@ An intake-first consultation platform that helps independent consultants arrive 
 
 [Live website](https://briefbooth.com) · [Interactive demo](https://briefbooth.com/book/demo/) · [Video walkthrough](docs/media/briefbooth-walkthrough.mp4) · [Technical deep dive](#engineering-decisions)
 
-![BriefBooth homepage](docs/media/home-desktop.png)
+![BriefBooth live desktop homepage, captured October 24, 2026](docs/media/home-desktop-2026-10-24.png)
 
 </div>
 
@@ -25,6 +25,8 @@ BriefBooth puts that context **before scheduling**. A consultant shares one pers
 The product was built around a concrete constraint: use free service tiers, without requiring a paid scheduling subscription or payment processing to complete a booking.
 
 ## See it in action
+
+**Fresh live captures · October 24, 2026.** Desktop and phone views below show the current public interface. The captioned video is an October 19 product walkthrough; it documents the earlier visual design and remains useful for understanding the booking sequence.
 
 [![Open the BriefBooth video walkthrough](docs/media/studio-desktop.png)](docs/media/briefbooth-walkthrough.mp4)
 
@@ -40,11 +42,12 @@ Prefer to interact? **[Try the account-free demo](https://briefbooth.com/book/de
 
 - **A personal booking page:** publish a profile, small avatar, introduction, and shareable `/book/your-name` link.
 - **Editable intake:** choose a specialty template, customize up to 10 questions, reorder them, and decide which answers are required.
-- **Flexible consultations:** offer different durations and Zoom, in-person, or both meeting formats.
+- **Flexible consultations:** offer different durations with Google Meet, Zoom, or in-person meeting details. Automatic provider connections depend on authorization and provider approval.
 - **Control over confirmations:** allow instant booking or require approval after reviewing the intake.
 - **A focused studio:** overview metrics, next confirmed meeting, one-click link copying, searchable bookings, approval filters, and history.
-- **Weekly availability:** timezone-aware hours, a minimum notice period, and a bounded booking horizon.
-- **Direct payment preferences:** publish preferred methods and instructions; any fee is negotiated outside BriefBooth.
+- **Availability controls:** timezone-aware weekly hours, notice periods, buffers, days off, date-specific hours, and a bounded booking horizon. Connected Google Calendar busy intervals block conflicts.
+- **Payment choices:** keep consultations free, publish external payment preferences, or complete Stripe onboarding for priced services. Live Stripe checkout is not yet verified end to end; see release boundaries below.
+- **Follow-through:** reminders, cancellation notifications, private notes, outcomes, and an optional project planner keep the next step visible.
 
 ### For clients
 
@@ -53,20 +56,32 @@ Prefer to interact? **[Try the account-free demo](https://briefbooth.com/book/de
 3. Choose a consultation, meeting format, and available time in a selected timezone.
 4. Submit a booking or approval request.
 5. Receive confirmation details when confirmed, with a private management link and calendar download.
+6. Optionally sign in by email to track requests, view meeting details, and edit intake answers. Changed answers notify the consultant.
+7. Reschedule or cancel through the booking controls; rescheduled requests return for approval.
 
-### Screenshots
+Client and consultant roles are enforced on the server. A client account cannot create a consultant profile by changing editable account metadata.
 
-| Client intake | Consultation options |
+### Desktop app views
+
+**Multi-select project intake.** Clients can choose software, websites, mobile applications, or several types together. The remaining discovery questions can be optional.
+
+![Live desktop intake with Software, Website and Mobile application selected](docs/media/project-types-desktop.png)
+
+| Consultation selection | Scheduling |
 | --- | --- |
-| ![One question at a time, with progress and optional answers](docs/media/intake-desktop.png) | ![Consultation cards show duration and free booking](docs/media/consultations-desktop.png) |
+| ![Demo consultation options and durations](docs/media/consultations-desktop.png) | ![Demo scheduling with timezone and available times](docs/media/scheduling-desktop.png) |
 
-![Scheduling with meeting format, timezone, available times, and booking summary](docs/media/scheduling-desktop.png)
+**Consultant workspace** — overview, booking navigation and a shareable link. This studio capture and the demo screens above are from October 19; the current release adds further controls described below.
 
-<details>
-<summary><strong>Mobile consultant studio</strong></summary>
-<br />
-<img src="docs/media/studio-mobile.png" alt="Mobile consultant overview with navigation, approval count, upcoming meetings, and shareable booking link" width="360" />
-</details>
+![Consultant studio desktop overview](docs/media/studio-desktop.png)
+
+### Phone views
+
+| Public homepage · October 24 | Project intake · October 24 | Studio · October 19 |
+| --- | --- | --- |
+| <img src="docs/media/home-mobile-2026-10-24.png" width="250" alt="BriefBooth homepage in a 390-pixel phone viewport" /> | <img src="docs/media/project-types-mobile.png" width="250" alt="Phone intake with multiple project categories selected and large checkbox targets" /> | <img src="docs/media/studio-mobile.png" width="250" alt="Consultant overview in a phone viewport" /> |
+
+Screenshots are real browser captures, not device mockups. The current intake capture uses fictional client information and stops before submission: no appointment, email, or charge was created. See [media provenance and video transcript](docs/media/WALKTHROUGH.md).
 
 The booth-shaped brand mark represents a space for a focused consultation. Reusable [blue](public/brand/booth.svg) and [white](public/brand/booth-white.svg) SVG assets share the same geometry as the application header and favicon.
 
@@ -99,6 +114,9 @@ flowchart LR
     Pages --> DB[(PostgreSQL\nRLS + booking RPCs)]
     DB --> Queue[Private scheduled work\nMeeting + email queues]
     Queue --> Zoom[Zoom API]
+    Queue --> Google[Google Calendar + Meet]
+    Google --> Busy[Busy-time synchronization]
+    Busy --> DB
     Queue --> Brevo[Brevo email API]
     Auth --> SMTP[Brevo SMTP\nVerification + recovery]
     Zoom --> Gateway[Cloudflare /api/zoom/* gateway]
@@ -141,7 +159,7 @@ This is a conceptual workflow: `MeetingReady`, `EmailQueued`, and `ProviderAccep
 
 ## Verification
 
-See the [October 19 end-to-end QA report](docs/QA-2026-10-19.md) for fixes, live observations, and explicitly untested boundaries.
+See the [end-to-end release evidence](docs/END-TO-END-RELEASE.md), [client account and intake checks](docs/CLIENT-ACCOUNTS-AND-INTAKE.md), and [earlier QA report](docs/QA-2026-10-19.md). These distinguish automated assertions, observed live behavior, and unverified provider boundaries.
 
 ```sh
 npm run lint
@@ -149,16 +167,19 @@ npm test
 npm run build
 ```
 
-`npm test` runs the committed suites below. Database suites execute SQL using **PGlite**, with local stubs for infrastructure such as cron/Vault/provider calls. They verify application rules without contacting paid services; they do not substitute for a live provider integration test.
+`npm test` runs the core domain suites; `npm run test:pages` separately checks hosting. The table highlights representative suites. Database suites execute SQL using **PGlite**, with local stubs for infrastructure such as cron/Vault/provider calls. They verify application rules without contacting paid services; they do not substitute for a live provider integration test.
 
 | Suite | Representative checks |
 | --- | --- |
 | [Database and email](tests/database.mjs) | Overlap prevention, timezone/DST behavior, tenant isolation, required intake, snapshots, cancellation, retry handling |
-| [Payment boundaries](tests/payments.mjs) | Paused Stripe behavior, rejection of paid checkout, direct payment preferences, earlier payment invariants |
+| [Payment boundaries](tests/payments.mjs) | Payment-state boundaries, fee calculations, publishing gates and direct payment preferences |
 | [Zoom and approvals](tests/zoom.mjs) | Owner-only review, pending slot holds, no Zoom before approval, OAuth replay protection, environment isolation |
 | [Zoom webhook](tests/zoom-webhook.mjs) | Signed challenge, invalid/stale requests, identity checks, fail-closed responses |
 | [Zoom gateway](tests/zoom-gateway.mjs) | Fixed upstream, method/body limits, unchanged signed payload, no credential forwarding |
 | [Avatars](tests/avatar.mjs) | Size/type constraints, valid WebP, removal, rejection of SVG/remote URLs |
+| [Google provider](tests/google-provider.mjs) | Calendar/Meet processing, approval timing and provider failure handling |
+| [Calendar feeds](tests/calendar-feed.mjs) | Private subscription access and feed behavior |
+| [Planner email](tests/project-planner-email.mjs) | Planner notification eligibility and worker behavior |
 | [Pages deployment](tests/pages.mjs) | Deep links, exported assets, security headers, private-page cache/index behavior, genuine 404s |
 
 For a deployed build or a running Pages preview:
@@ -225,20 +246,22 @@ docs/                       Operations, screenshots, video, transcript
 
 ## Current release and honest boundaries
 
-Status documented **October 19, 2026**:
+Status documented **October 24, 2026**, based on the linked release records. Screenshots are not evidence of provider approval.
 
 | Capability | Status |
 | --- | --- |
-| Consultant signup/login/recovery, profiles, intake templates, scheduling | Implemented and deployed |
-| Instant bookings and approval requests | Implemented and deployed |
-| Confirmation email queue for client and consultant | Implemented; delivery depends on provider availability and quota |
-| Automatic Zoom for the initial connected consultant | Enabled |
-| Self-service Zoom connection for every consultant | Submitted for Zoom review; public activation remains gated |
-| Stripe checkout | Paused; the live product does not collect payments |
-| External calendar sync, reminders, holiday/date overrides | Not implemented |
-| Automatic Zoom deletion and cancellation emails | Not implemented |
+| Consultant accounts, profiles, shareable links, intake templates, scheduling | Implemented and deployed |
+| Client email-link login, booking status and editable intake | Implemented; verified-email ownership enforced |
+| Instant bookings, approval requests, rescheduling and cancellation | Implemented; live disposable booking checks documented |
+| Confirmation, reminder, cancellation and changed-intake email queues | Implemented; delivery subject to provider availability and free-tier quotas |
+| Google Calendar busy-time checks and Google Meet after approval | Working for the authorized account; public Calendar scope review is **not submitted or approved** |
+| Zoom | Existing authorized connection works; public consultant rollout awaits Zoom approval |
+| Apple/Outlook calendars | Private one-way subscription feeds; no busy-time import or full two-way sync |
+| Stripe | Live server integration and embedded onboarding deployed; consultant merchant onboarding and actual checkout remain unverified; no real test charge made |
+| Schedule overrides, notes/outcomes, private export and guarded account deletion | Implemented; deletion of accounts with paid records requires support review |
+| Zoom meeting deletion | Manual cleanup remains necessary for existing scope permissions |
 
-[Zoom rollout details](ZOOM-PUBLIC-RELEASE.md) · [Paused payment integration](PAYMENT-SETUP.md)
+[Google setup](docs/GOOGLE-CALENDAR-SETUP.md) · [Zoom rollout](ZOOM-PUBLIC-RELEASE.md) · [Stripe activation](docs/STRIPE-ACTIVATION.md) · [Release evidence](docs/END-TO-END-RELEASE.md)
 
 The current deployment uses **Cloudflare Pages Free, Supabase Free, and Brevo Free**, plus the connected Zoom account. Free-tier quotas still apply; this is not a promise of unlimited free infrastructure. No automatic paid fallback is configured. The owned custom domain is separate from hosting. The existing Vercel project is paused and is not the active deployment path.
 
@@ -246,7 +269,7 @@ The current deployment uses **Cloudflare Pages Free, Supabase Free, and Brevo Fr
 
 BriefBooth combines product design with full-stack implementation: translating a real consultation workflow into a small interface, modeling approval and cancellation states, enforcing correctness in PostgreSQL, protecting tenant boundaries, integrating OAuth and asynchronous notifications, and deploying within explicit cost constraints.
 
-The next engineering priorities are broader Zoom authorization after review, external calendar conflict detection, date-specific availability, and stronger operational monitoring and abuse prevention. They are deliberately documented as future work rather than implied by the demo.
+Remaining priorities are Google scope verification, broader Zoom authorization after review, completing merchant onboarding and payment verification, and stronger operational monitoring and abuse prevention. The product demo does not imply that these external approval steps are complete.
 
 ---
 
