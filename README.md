@@ -26,13 +26,13 @@ The product was built around a concrete constraint: use free service tiers, with
 
 ## See it in action
 
-**Fresh live captures · October 24, 2026.** Desktop and phone views below show the current public interface. The captioned video is an October 19 product walkthrough; it documents the earlier visual design and remains useful for understanding the booking sequence.
+**Fresh live captures · October 24, 2026.** Desktop and phone views below show the current public interface. The new captioned video uses only October 24 captures of the current app, including desktop and phone layouts.
 
-[![Open the BriefBooth video walkthrough](docs/media/studio-desktop.png)](docs/media/briefbooth-walkthrough.mp4)
+[![Open the current desktop and phone video walkthrough](docs/media/home-desktop-2026-10-24.png)](docs/media/briefbooth-walkthrough.mp4)
 
-**[Watch or download the 30-second walkthrough →](docs/media/briefbooth-walkthrough.mp4)**
+**[Watch or download the 54-second desktop + phone walkthrough →](docs/media/briefbooth-walkthrough.mp4)**
 
-The silent, captioned video presents actual application screenshots: homepage → intake → consultation selection → scheduling → demo completion → consultant studio. It is an edited screenshot walkthrough, not a continuous screen recording. The client sequence uses the built-in demo and fictional information; it creates no real appointment or email. See the [text transcript](docs/media/WALKTHROUGH.md).
+The silent, captioned video presents current application screenshots: desktop homepage → multi-select project intake → demo questions → consultation selection → scheduling → phone homepage → phone intake → phone scheduling → demo completion. It is an edited screenshot walkthrough, not a continuous screen recording. The 4u Digital intake stops before submission; the completed sequence uses the built-in demo and fictional information. No real appointment, email, meeting, or charge was created. The MP4 is stored directly in this repository; no YouTube or external video service is used. See the [text transcript](docs/media/WALKTHROUGH.md).
 
 Prefer to interact? **[Try the account-free demo](https://briefbooth.com/book/demo/)**. No signup, payment, or live booking is needed.
 
