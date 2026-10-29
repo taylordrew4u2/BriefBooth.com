@@ -18,7 +18,8 @@ export default function Account() {
     if (role.error) { setMessage("Could not load your account. Please reload and try again."); return; }
     const clientIntent = Date.now() - Number(localStorage.getItem("briefbooth_client_login") || 0) < 15 * 60 * 1000;
     localStorage.removeItem("briefbooth_client_login");
-    router.replace(role.data === "consultant" && !clientIntent ? "/studio" : "/client");
+    const zoomIntent = new URLSearchParams(window.location.search).get("connect") === "zoom";
+    router.replace(role.data === "consultant" && !clientIntent ? (zoomIntent ? "/studio/?connect=zoom" : "/studio") : "/client");
   }, [router]);
   useEffect(() => {
     if (previousMode.current !== mode) formHeading.current?.focus();
@@ -58,7 +59,7 @@ export default function Account() {
         if (error) throw error;
         setMessage("Check your email for the password reset link.");
       } else if (mode === "signup") {
-        const { data, error } = await db().auth.signUp({ email, password, options: { emailRedirectTo: location.origin + "/account/" } });
+        const { data, error } = await db().auth.signUp({ email, password, options: { emailRedirectTo: location.origin + (new URLSearchParams(location.search).get("connect") === "zoom" ? "/account/?connect=zoom" : "/account/") } });
         if (error) throw error;
         if (data.session) await routeAccount();
         else

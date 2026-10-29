@@ -80,6 +80,14 @@ export default function Studio() {
   const [now, setNow] = useState(() => Date.now());
   const [refreshing, setRefreshing] = useState(false);
   const bookingAction = useRef(false);
+  const openedZoomIntent = useRef(false);
+  useEffect(() => {
+    if (openedZoomIntent.current || loading || !profile || tab !== "profile" || new URLSearchParams(window.location.search).get("connect") !== "zoom") return;
+    const panel = document.getElementById("zoom-connection");
+    openedZoomIntent.current = true;
+    panel?.focus({ preventScroll: true });
+    panel?.scrollIntoView({ block: "center" });
+  }, [loading, profile, tab]);
   useEffect(() => {
     if (!configured) return;
     const { data } = db().auth.onAuthStateChange(event => {
@@ -89,7 +97,7 @@ export default function Studio() {
   }, [router]);
   useEffect(() => {
     if (!configured) {
-      router.replace("/account");
+      router.replace(new URLSearchParams(window.location.search).get("connect") === "zoom" ? "/account/?connect=zoom" : "/account");
       return;
     }
     async function load() {
@@ -98,7 +106,7 @@ export default function Studio() {
           data: { user },
         } = await db().auth.getUser();
         if (!user) {
-          router.replace("/account");
+          router.replace(new URLSearchParams(window.location.search).get("connect") === "zoom" ? "/account/?connect=zoom" : "/account");
           return;
         }
         const role = await db().rpc("account_role");
@@ -106,7 +114,9 @@ export default function Studio() {
         if (role.data !== "consultant") { router.replace("/client"); return; }
         setSiteOrigin(window.location.origin);
         setUid(user.id);
-        if (new URLSearchParams(window.location.search).has("stripe")) setTab("consultations");
+        const intent = new URLSearchParams(window.location.search);
+        if (intent.has("stripe")) setTab("consultations");
+        else if (intent.get("connect") === "zoom" || intent.has("zoom") || intent.has("google")) setTab("profile");
         const results = await Promise.all([
           db().from("profiles").select("*").eq("id", user.id).maybeSingle(),
           db()
@@ -512,7 +522,7 @@ export default function Studio() {
                     </select>
                     <span className="field-help">Requests hold the selected time. Meeting links and confirmation emails are sent only after approval. Save your profile to apply this setting.</span>
                   </label>
-                  <ZoomConnection />
+                  <div id="zoom-connection" tabIndex={-1}><ZoomConnection /></div>
                   <GoogleConnection />
                 {savedProfile && <CalendarSubscription/>}
                   <label>
