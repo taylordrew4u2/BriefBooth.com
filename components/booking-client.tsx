@@ -63,7 +63,7 @@ export default function Booking() {
           setProfile(demoProfile);
           setServices(demoServices);
         } else {
-          const { data: p, error } = await db()
+          const { data: p, error, status } = await db()
             .from("profiles")
             .select("*")
             .eq("slug", slug!)
@@ -71,7 +71,9 @@ export default function Booking() {
             .single();
           if (error)
             throw new Error(
-              "This booking page is unavailable. Check the link or contact your consultant.",
+              status === 402 || status >= 500 || status === 0
+                ? "Booking is temporarily unavailable. Please contact your consultant to arrange a time, or try again later."
+                : "This booking page is unavailable. Check the link or contact your consultant.",
             );
           const { data: s, error: se } = await db()
             .from("services")

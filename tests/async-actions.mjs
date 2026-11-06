@@ -36,6 +36,7 @@ for(const [file,name] of cases) {
       hours:[{enabled:true,weekday:1,start_time:'09:00',end_time:'17:00'}],
       router:{push:path=>routes.push(path),replace:path=>routes.push(path)},
       localStorage:{getItem:()=>null,removeItem:()=>{}},
+      URLSearchParams,window:{location:{search:''}},
       FormData:class {get(key){return {password:'test-only-placeholder',title:'Consultation',description:'Test',duration:'30',meeting_modes:'zoom'}[key];}},
     };
     if(name==='savePassword') context.routeAccount=handler(file,'routeAccount',context);
@@ -63,6 +64,7 @@ for(const outcome of ['consultant','client','client-intent','role-error','role-r
     }}),
     setBusy:value=>busy.push(value),setMessage:value=>messages.push(value),
     router:{replace:path=>routes.push(path)},
+    URLSearchParams,window:{location:{search:''}},
     localStorage:{getItem:key=>key==='briefbooth_client_login' && outcome==='client-intent'?String(Date.now()):null,removeItem:key=>storageRemovals.push(key)},
     FormData:class {get(){return 'test-only-placeholder';}},
   };
