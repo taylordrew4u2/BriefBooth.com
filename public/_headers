@@ -14,3 +14,11 @@
 /logout/*
   Cache-Control: no-store
   X-Robots-Tag: noindex, nofollow
+
+/booking-status/*
+  Cache-Control: no-store
+  X-Robots-Tag: noindex, nofollow
+
+/booking-review/*
+  Cache-Control: no-store
+  X-Robots-Tag: noindex, nofollow

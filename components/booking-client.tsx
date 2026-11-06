@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
+import RecoveryBooking from "@/components/recovery-client";
 import Link from "next/link";
 import { paymentAction, stripeRedirect } from "@/lib/payments";
 import { PriceBreakdown } from "@/components/price-breakdown";
@@ -16,7 +17,16 @@ import {
   Profile,
   Service,
 } from "@/lib/supabase";
-export default function Booking() {
+export default function BookingRouter() {
+  const [path, setPath] = useState<string | null>(null);
+  useEffect(() => { Promise.resolve().then(() => setPath(window.location.pathname)); }, []);
+  if (process.env.NEXT_PUBLIC_BOOKING_RECOVERY === "1") {
+    if (path === null) return <main id="main" className="p-8" aria-busy="true">Loading booking page…</main>;
+    if (/^\/book\/4u-digital\/?$/.test(path)) return <RecoveryBooking />;
+  }
+  return <Booking />;
+}
+function Booking() {
   const submittingRequest = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const stepHeading = useRef<HTMLHeadingElement>(null);

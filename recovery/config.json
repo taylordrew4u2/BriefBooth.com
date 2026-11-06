@@ -1,0 +1,141 @@
+{
+  "profile": {
+    "id": "adc53778-f007-4c58-bd47-ba7a675abb29",
+    "bio": "A rough idea is enough. Book a free first consultation via Google Meet to talk about what you want to build, improve, or fix. Choose your project types, or Other / not sure yet; the other discovery questions are optional. The detailed project planner is optional too—you do not need to complete it before booking. NYC business visits can help when you are unsure what you need or your software must fit a physical space or workflow. Visits in Manhattan, Brooklyn, and parts of Queens are available by arrangement; travel farther afield is discussed in advance.",
+    "name": "4u Digital",
+    "slug": "4u-digital",
+    "headline": "App, web & full-stack development",
+    "timezone": "America/New_York",
+    "published": true,
+    "booking_mode": "approval",
+    "payment_notes": "",
+    "payment_methods": [],
+    "intake_questions": [
+      {
+        "id": "project-types",
+        "type": "multiple",
+        "label": "What do you need help with?",
+        "options": [
+          "Software",
+          "Website",
+          "Web application",
+          "Mobile application",
+          "Automation & integrations",
+          "Fixes & improvements",
+          "Other / not sure yet"
+        ],
+        "required": true
+      },
+      {
+        "id": "tech-experience",
+        "type": "multiple",
+        "label": "How familiar are you with building apps, websites, or software? Select what describes you—there is no wrong answer.",
+        "options": [
+          "Completely new — please explain the basics",
+          "I know the basics but have not built anything",
+          "I have used no-code tools or worked with developers",
+          "I have some coding or technical experience",
+          "I am an experienced developer"
+        ],
+        "required": false
+      },
+      {
+        "id": "64493a02-49a9-4e87-b5a9-60e90ef1504c",
+        "type": "long",
+        "label": "What would you like to build, improve, or fix?",
+        "required": false
+      },
+      {
+        "id": "706c487e-fab8-46ce-9859-045ce90e5c52",
+        "type": "long",
+        "label": "Who will use it, and what is the main thing they should be able to do?",
+        "required": false
+      },
+      {
+        "id": "59dad991-83fd-4229-844d-1c9dda742883",
+        "type": "long",
+        "label": "Do you have an existing website, app, designs, or a tech stack? Share any useful context or public links—no passwords or API keys.",
+        "required": false
+      },
+      {
+        "id": "966340a4-8d7d-4ba0-a65e-2cf0fd670c0a",
+        "type": "short",
+        "label": "Do you have a target launch date or budget range in mind?",
+        "required": false
+      }
+    ]
+  },
+  "services": [
+    {
+      "id": "53b58be8-09ff-445e-bb72-f6b93421e9ec",
+      "title": "Software, Website & App Consultation",
+      "active": true,
+      "duration": 30,
+      "owner_id": "adc53778-f007-4c58-bd47-ba7a675abb29",
+      "description": "A free 30-minute first consultation via Google Meet. Rough ideas are welcome. Choose your project types or Other / not sure yet, then request a time. The detailed project planner is optional; we can work through your goals together.",
+      "amount_cents": 0,
+      "meeting_modes": [
+        "google_meet"
+      ]
+    }
+  ],
+  "overrides": [],
+  "preferences": {
+    "owner_id": "adc53778-f007-4c58-bd47-ba7a675abb29",
+    "reminders": true,
+    "horizon_days": 60,
+    "notice_hours": 1,
+    "buffer_minutes": 60
+  },
+  "availability": [
+    {
+      "id": "e5c29c70-2c47-4952-9977-122bf1c7f06d",
+      "weekday": 0,
+      "end_time": "20:00:00",
+      "owner_id": "adc53778-f007-4c58-bd47-ba7a675abb29",
+      "start_time": "09:00:00"
+    },
+    {
+      "id": "49df7763-f955-4f73-a8eb-e549424e9c8c",
+      "weekday": 1,
+      "end_time": "20:00:00",
+      "owner_id": "adc53778-f007-4c58-bd47-ba7a675abb29",
+      "start_time": "09:00:00"
+    },
+    {
+      "id": "779761de-ae32-41b9-9181-3166d1009cd5",
+      "weekday": 2,
+      "end_time": "20:00:00",
+      "owner_id": "adc53778-f007-4c58-bd47-ba7a675abb29",
+      "start_time": "09:00:00"
+    },
+    {
+      "id": "e5cffc88-7b34-4507-b1d7-12bb365cb2bd",
+      "weekday": 3,
+      "end_time": "20:00:00",
+      "owner_id": "adc53778-f007-4c58-bd47-ba7a675abb29",
+      "start_time": "09:00:00"
+    },
+    {
+      "id": "dfab0249-cba7-4b4a-b558-311512b0ef58",
+      "weekday": 4,
+      "end_time": "20:00:00",
+      "owner_id": "adc53778-f007-4c58-bd47-ba7a675abb29",
+      "start_time": "09:00:00"
+    },
+    {
+      "id": "6e4f940a-e203-4657-a161-aa82cf42049a",
+      "weekday": 5,
+      "end_time": "20:00:00",
+      "owner_id": "adc53778-f007-4c58-bd47-ba7a675abb29",
+      "start_time": "09:00:00"
+    },
+    {
+      "id": "307782f8-4a78-4be8-b3fb-96450e744ae7",
+      "weekday": 6,
+      "end_time": "20:00:00",
+      "owner_id": "adc53778-f007-4c58-bd47-ba7a675abb29",
+      "start_time": "09:00:00"
+    }
+  ]
+}
