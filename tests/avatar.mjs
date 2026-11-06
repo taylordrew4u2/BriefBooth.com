@@ -1,0 +1,12 @@
+import {PGlite} from '@electric-sql/pglite';
+import {readFileSync} from 'node:fs';
+import assert from 'node:assert/strict';
+const db=new PGlite();
+await db.exec('create table profiles(id int primary key); insert into profiles values(1);');
+await db.exec(readFileSync('supabase/migrations/20261019030000_profile_avatar.sql','utf8'));
+const image='data:image/webp;base64,UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA';
+await db.query('update profiles set avatar_data=$1',[image]);
+for(const value of ['data:image/svg+xml;base64,PHN2Zz4=','https://example.com/image.png','data:image/webp;base64,UklGR'+ 'A'.repeat(50000),'data:image/webp;base64,UklGR'+ 'A'.repeat(43687)]) await assert.rejects(()=>db.query('update profiles set avatar_data=$1',[value]));
+await db.query("update profiles set avatar_data=''");
+console.log('PASS avatar accepts small embedded WebP and removal; rejects SVG, external URLs and oversized payloads');
+await db.close();

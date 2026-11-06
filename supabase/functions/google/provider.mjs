@@ -1,0 +1,5 @@
+export const scopes=['https://www.googleapis.com/auth/calendar.events.owned','https://www.googleapis.com/auth/calendar.freebusy'];
+export const eventId=id=>'bb'+id.replaceAll('-','');
+export function eventBody(job){return {id:eventId(job.booking_id),summary:job.title,start:{dateTime:job.starts_at},end:{dateTime:job.ends_at},conferenceData:{createRequest:{requestId:eventId(job.booking_id),conferenceSolutionKey:{type:'hangoutsMeet'}}}};}
+export function meetingUrl(event){const value=event.conferenceData?.entryPoints?.find(p=>p.entryPointType==='video')?.uri;return typeof value==='string'&&/^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}$/.test(value)?value:null;}
+export function busyPeriods(data){const c=data?.calendars?.primary;if(!c||c.errors?.length||!Array.isArray(c.busy))throw Error('Calendar unavailable');return c.busy.map(b=>{if(!Number.isFinite(Date.parse(b.start))||!Number.isFinite(Date.parse(b.end))||Date.parse(b.end)<=Date.parse(b.start))throw Error('Invalid availability');return {start:b.start,end:b.end};});}
