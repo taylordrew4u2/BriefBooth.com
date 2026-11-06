@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS recovery_bookings (
  source TEXT NOT NULL DEFAULT 'recovery' CHECK(source IN ('recovery','supabase')),
  event_id TEXT,
  meeting_url TEXT,
+ meeting_error TEXT CHECK(meeting_error IS NULL OR meeting_error='google_meet_failed'),
  created_ms INTEGER NOT NULL,
  updated_ms INTEGER NOT NULL,
  action_nonce TEXT,
@@ -24,6 +25,7 @@ CREATE TABLE IF NOT EXISTS recovery_bookings (
 );
 CREATE INDEX IF NOT EXISTS recovery_bookings_owner_time ON recovery_bookings(owner_id, starts_ms, ends_ms);
 CREATE INDEX IF NOT EXISTS recovery_bookings_status_time ON recovery_bookings(owner_id,status,starts_ms);
+CREATE INDEX IF NOT EXISTS recovery_bookings_owner_created ON recovery_bookings(owner_id,created_ms DESC,id DESC);
 CREATE TABLE IF NOT EXISTS recovery_rate_limits (
  bucket TEXT PRIMARY KEY,
  count INTEGER NOT NULL,

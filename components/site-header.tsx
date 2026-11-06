@@ -10,10 +10,16 @@ export function Logo() {
   );
 }
 export function SiteHeader() {
+  const recovery = process.env.NEXT_PUBLIC_BOOKING_RECOVERY === "1";
   return (
     <header className="site-header">
       <Logo />
       <nav aria-label="Main navigation">
+        {recovery ? <>
+          <Link href="/booking-status/">My booking</Link>
+          <Link href="/booking-review/" className="nav-signin">Review requests</Link>
+          <Link href="/book/4u-digital/" className="button small">Book a consultation <span aria-hidden="true">↗</span></Link>
+        </> : <>
         <Link href="/#how-it-works">How it works</Link>
         <Link href="/client">My bookings</Link>
         <Link href="/account" className="nav-signin">
@@ -22,6 +28,7 @@ export function SiteHeader() {
         <Link href="/account?mode=signup" className="button small">
           Create your page <span aria-hidden="true">↗</span>
         </Link>
+        </>}
       </nav>
     </header>
   );

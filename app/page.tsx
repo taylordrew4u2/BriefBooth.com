@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { SiteHeader, Logo } from "@/components/site-header";
 export default function Home() {
+  if (process.env.NEXT_PUBLIC_BOOKING_RECOVERY === "1") return <ConsultationHome />;
   return (
     <>
       <SiteHeader />
@@ -192,4 +193,62 @@ export default function Home() {
       </footer>
     </>
   );
+}
+
+function ConsultationHome() {
+  return <>
+    <SiteHeader />
+    <main id="main">
+      <section className="hero">
+        <div className="hero-copy">
+          <div className="product-label"><span />4U DIGITAL · FREE CONSULTATIONS</div>
+          <h1>Your idea.<br />A clearer plan.<br /><span>Let’s talk.</span></h1>
+          <p>Book a free 30-minute Google Meet consultation with 4u Digital for your website, app, software, or automation project.</p>
+          <div className="hero-actions">
+            <Link className="button" href="/book/4u-digital/">Request a consultation <span aria-hidden="true">↗</span></Link>
+            <Link className="text-link" href="#how-it-works">How booking works <span aria-hidden="true">↓</span></Link>
+          </div>
+          <div className="hero-note">No payment or client account needed. Your appointment is confirmed after approval.</div>
+        </div>
+        <div className="product-preview">
+          <div className="browser-bar"><span>briefbooth.com/book/4u-digital</span></div>
+          <div className="preview-content">
+            <div className="preview-profile">
+              <div className="avatar">4u</div>
+              <h2>4u Digital</h2>
+              <p>App, web &amp; full-stack development</p>
+              <div className="profile-rule" />
+              <h3>A rough idea is enough.</h3>
+              <p>Tell us what you want to build, improve, or fix. We’ll work through the next step together.</p>
+              <div className="preview-meta"><span>◷ &nbsp; 30 minutes</span><span>↗ &nbsp; Google Meet</span></div>
+            </div>
+            <div className="preview-calendar">
+              <div className="preview-question">
+                <span className="step-number">YOUR FIRST CONVERSATION</span>
+                <h3>Choose a time that works.</h3>
+                <p>Share a little context, request an available time, and receive a private link to check your request.</p>
+                <p>When 4u Digital approves, your confirmation includes the Google Meet link.</p>
+              </div>
+              <Link href="/book/4u-digital/" className="button preview-button">Choose a consultation <span aria-hidden="true">→</span></Link>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section id="how-it-works" className="how-section">
+        <div className="section-intro"><h2>From an idea<br />to a conversation.</h2><p>Your request stays inside BriefBooth.</p></div>
+        <div className="steps">
+          <article><span className="step-number">01 / INTRODUCE YOURSELF</span><h3>Tell us a little.</h3><p>Choose your project types and share any helpful context. A detailed project plan is optional.</p></article>
+          <article><span className="step-number">02 / REQUEST A TIME</span><h3>Find an opening.</h3><p>Choose from available times. Your request awaits approval; it is not yet a confirmed appointment.</p></article>
+          <article><span className="step-number">03 / MEET ONLINE</span><h3>Get your confirmation.</h3><p>After approval, your private booking page and confirmation show the Google Meet link.</p></article>
+        </div>
+      </section>
+      <section className="faq">
+        <h2>Before you book.</h2>
+        <details><summary>Does this consultation cost anything?</summary><p>No. The first 30-minute consultation is free. You won’t enter a card or make a payment to book.</p></details>
+        <details><summary>How do I check or cancel my request?</summary><p>Keep the private booking link shown after you submit. You can use it to check your status or cancel before your appointment starts.</p></details>
+        <details><summary>Can I create a consultant account?</summary><p>Account sign-in, new consultant registration, and the full Studio are temporarily unavailable. This booking page is for 4u Digital consultations.</p></details>
+      </section>
+    </main>
+    <footer className="site-footer"><Logo /><span><Link href="/support/">Support</Link> · <Link href="/privacy/">Privacy</Link> · <Link href="/terms/">Terms</Link></span><Link href="/booking-review/">Review consultation requests ↗</Link></footer>
+  </>;
 }
