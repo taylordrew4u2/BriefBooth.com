@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS recovery_bookings (
  meeting_error TEXT CHECK(meeting_error IS NULL OR meeting_error='google_meet_failed'),
  created_ms INTEGER NOT NULL,
  updated_ms INTEGER NOT NULL,
+ notification_version INTEGER NOT NULL DEFAULT 0,
  action_nonce TEXT,
  action_until INTEGER NOT NULL DEFAULT 0
 );
@@ -46,7 +47,8 @@ CREATE TABLE IF NOT EXISTS recovery_emails (
  attempt_count INTEGER NOT NULL DEFAULT 0,
  send_started_ms INTEGER NOT NULL DEFAULT 0,
  next_attempt_ms INTEGER NOT NULL DEFAULT 0,
- last_error TEXT
+ last_error TEXT,
+ booking_version INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS recovery_emails_booking_state ON recovery_emails(booking_id,state);
 CREATE TABLE IF NOT EXISTS recovery_email_attempts (
@@ -59,3 +61,19 @@ CREATE TABLE IF NOT EXISTS recovery_email_attempts (
  last_checked_ms INTEGER NOT NULL DEFAULT 0,
  UNIQUE(email_id,attempt_number)
 );
+CREATE TABLE IF NOT EXISTS recovery_reschedule_operations (
+ operation_id TEXT PRIMARY KEY,
+ booking_id TEXT NOT NULL REFERENCES recovery_bookings(id),
+ request_hash TEXT NOT NULL,
+ previous_starts_ms INTEGER NOT NULL,
+ previous_ends_ms INTEGER NOT NULL,
+ starts_ms INTEGER NOT NULL,
+ ends_ms INTEGER NOT NULL CHECK(ends_ms>starts_ms),
+ state TEXT NOT NULL CHECK(state IN ('reserved','applying','complete','failed','cancelled')),
+ google_etag TEXT NOT NULL,
+ attempts INTEGER NOT NULL DEFAULT 0,
+ created_ms INTEGER NOT NULL,
+ updated_ms INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS recovery_one_active_reschedule ON recovery_reschedule_operations(booking_id) WHERE state IN ('reserved','applying');
+CREATE INDEX IF NOT EXISTS recovery_reschedule_time ON recovery_reschedule_operations(state,starts_ms,ends_ms);

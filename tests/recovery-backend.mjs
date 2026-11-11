@@ -15,7 +15,7 @@ const DB={
   catch(error){sql.exec('ROLLBACK');throw error;}
  },
 };
-const config={profile:{id:'owner',slug:'4u-digital',name:'4u Digital',timezone:'America/New_York',booking_mode:'approval',intake_questions:[{id:'need',label:'What do you need?',type:'multiple',required:true,options:['Website','App']}]},services:[{id:'service',title:'Free consultation',duration:30,active:true,amount_cents:0,meeting_modes:['google_meet']}],availability:Array.from({length:7},(_,weekday)=>({weekday,start_time:'09:00',end_time:'20:00'})),preferences:{notice_hours:1,buffer_minutes:60,horizon_days:60}};
+const config={profile:{id:'owner',slug:'4u-digital',name:'4u Digital',timezone:'America/New_York',booking_mode:'approval',intake_questions:[{id:'project-types',label:'What do you need?',type:'multiple',required:true,options:['Website','App','Other / not sure yet']},{id:'old-context',label:'Previous context question',type:'short',required:false}]},services:[{id:'service',title:'Free consultation',duration:30,active:true,amount_cents:0,meeting_modes:['google_meet']}],availability:Array.from({length:7},(_,weekday)=>({weekday,start_time:'09:00',end_time:'20:00'})),preferences:{notice_hours:1,buffer_minutes:60,horizon_days:60}};
 const ownerToken='test-owner-secret-token-that-is-at-least-32-chars';
 const env={RECOVERY_DB:DB,RECOVERY_CONFIG_JSON:JSON.stringify(config),RECOVERY_CAPABILITY_SECRET:'test-only-capability-secret-that-is-32-characters',RECOVERY_OWNER_TOKEN_SHA256:await recoveryTest.digest(ownerToken),RECOVERY_OWNER_EMAIL:'owner@example.com',GOOGLE_CLIENT_ID:'dummy-client',GOOGLE_CLIENT_SECRET:'dummy-secret',GOOGLE_REFRESH_TOKEN:'dummy-refresh',BREVO_API_KEY:'dummy-mail'};
 const brevoEvents=new Map();
@@ -39,20 +39,20 @@ globalThis.fetch=async(url,opts={})=>{
 };
 const request=async(path,{method='GET',data,token,origin='https://briefbooth.com',ip='192.0.2.1',ctx}={})=>{const headers={'cf-connecting-ip':ip};if(token)headers.Authorization='Bearer '+token;if(method==='POST'){if(origin)headers.Origin=origin;if(data!==undefined)headers['Content-Type']='application/json';}const r=await handleRecovery(new Request('https://briefbooth.com/api/recovery/'+path,{method,headers,body:data===undefined?undefined:JSON.stringify(data)}),env,ctx);return {status:r.status,body:await r.json()};};
 const day=new Date(Date.now()+3*86400000).toISOString().slice(0,10);
-const input=(time='10:00',id=crypto.randomUUID())=>({serviceId:'service',startsAt:new Date(recoveryTest.localInstant(day,time,config.profile.timezone)).toISOString(),name:'Test Client',email:'client@example.com',notes:'Dummy only',answers:{need:'Website'},requestId:id});
+const input=(time='10:00',id=crypto.randomUUID())=>({serviceId:'service',startsAt:new Date(recoveryTest.localInstant(day,time,config.profile.timezone)).toISOString(),name:'Test Client',email:'client@example.com',notes:'Dummy only',answers:{'project-types':'Website'},requestId:id});
 try{
  const savedOwnerHash=env.RECOVERY_OWNER_TOKEN_SHA256;delete env.RECOVERY_OWNER_TOKEN_SHA256;assert.equal((await request('config')).status,503);env.RECOVERY_OWNER_TOKEN_SHA256=savedOwnerHash;
- const c=await request('config');assert.equal(c.status,200);assert.deepEqual(c.body.profile.intake_questions,[]);assert.ok(!JSON.stringify(c).includes('dummy-secret'));
+ const c=await request('config');assert.equal(c.status,200);assert.deepEqual(c.body.profile.intake_questions.map(question=>question.id),['project-types']);assert.ok(!JSON.stringify(c).includes('dummy-secret'));
  assert.equal((await request('book',{method:'POST',data:input(),origin:'https://attacker.example'})).status,403);
  assert.equal((await request('admin')).status,401);
  assert.equal((await request('manage?token=forbidden-query-token')).status,404);
  const required=input();delete required.name;assert.equal((await request('book',{method:'POST',data:required})).status,400);
- const invalid=input();invalid.answers.need='Invalid';assert.equal((await request('book',{method:'POST',data:invalid})).status,400);
+ const invalid=input();invalid.answers['project-types']='Invalid';assert.equal((await request('book',{method:'POST',data:invalid})).status,400);
  malformedBusy=true;assert.equal((await request(`slots?service=service&day=${day}`)).status,503);malformedBusy=false;
  failCalendar=true;assert.equal((await request(`slots?service=service&day=${day}`)).status,503);failCalendar=false;
  calendarBusy=[{start:new Date(recoveryTest.localInstant(day,'12:00',config.profile.timezone)).toISOString(),end:new Date(recoveryTest.localInstant(day,'12:30',config.profile.timezone)).toISOString()}];
  const availability=await request(`slots?service=service&day=${day}`);assert.equal(availability.status,200);assert.ok(!availability.body.slots.includes(input('11:30').startsAt));assert.ok(availability.body.slots.includes(input('10:00').startsAt));calendarBusy=[];
- const one=input();one.answers.need='Website\nApp';const two={...input('10:15'),email:'second@example.com'};
+ const one=input();one.answers['project-types']='Website\nApp';const two={...input('10:15'),email:'second@example.com'};
  const concurrent=await Promise.all([request('book',{method:'POST',data:one}),request('book',{method:'POST',data:two,ip:'192.0.2.2'})]);assert.deepEqual(concurrent.map(r=>r.status).sort(),[201,409]);const won=concurrent.find(r=>r.status===201),winningInput=concurrent[0].status===201?one:two;assert.equal(won.body.status,'pending_approval');assert.equal(events.size,0);assert.equal(mail.length,2);
  const retry=await request('book',{method:'POST',data:winningInput});assert.equal(retry.status,200);assert.equal(retry.body.token,won.body.token);assert.equal(mail.length,2);
  const altered=await request('book',{method:'POST',data:{...winningInput,name:'Different'}});assert.equal(altered.status,409);

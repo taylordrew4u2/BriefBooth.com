@@ -7,8 +7,12 @@ import {Input} from '@/components/ui/input';
 import {db,configured} from '@/lib/supabase';
 import styles from './client.module.css';
 import {IntakeEditor} from './intake-editor';
+import {RecoveryAccountLinks} from '@/components/recovery-account-links';
 type Booking={id:string;title:string;consultant:string;starts_at:string;status:string;manage_token:string};
 export default function ClientAccount(){
+ return process.env.NEXT_PUBLIC_BOOKING_RECOVERY==='1'?<RecoveryAccountLinks view="client"/>:<LegacyClientAccount/>;
+}
+function LegacyClientAccount(){
  const [now,setNow]=useState(0);
  const [email,setEmail]=useState('');const [signedIn,setSignedIn]=useState(false);const [loading,setLoading]=useState(true);const [busy,setBusy]=useState(false);const [message,setMessage]=useState('');const [bookings,setBookings]=useState<Booking[]>([]);
  async function refresh(){

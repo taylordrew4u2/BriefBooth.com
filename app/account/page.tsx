@@ -6,7 +6,11 @@ import { Logo } from "@/components/site-header";
 import { db, configured } from "@/lib/supabase";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { RecoveryAccountLinks } from "@/components/recovery-account-links";
 export default function Account() {
+  return process.env.NEXT_PUBLIC_BOOKING_RECOVERY === "1" ? <RecoveryAccountLinks view="account" /> : <LegacyAccount />;
+}
+function LegacyAccount() {
   const router = useRouter();
   const formHeading = useRef<HTMLHeadingElement>(null);
   const previousMode = useRef("signin");
