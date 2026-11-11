@@ -39,7 +39,7 @@ function providerId(value) {
   return id && id.length <= 400 && !/[\s<>]/.test(id) ? id : null;
 }
 
-function providerFetch(env, path, init = {}, timeout = 10_000) {
+function providerFetch(env, path, init, timeout) {
   return fetch(BREVO + path, { ...init, headers: { 'api-key': env.BREVO_API_KEY, ...init.headers }, signal: AbortSignal.timeout(timeout) });
 }
 

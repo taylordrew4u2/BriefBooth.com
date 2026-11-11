@@ -47,7 +47,7 @@ function Booking() {
   const [slot, setSlot] = useState("");
   const [stage, setStage] = useState(0);
   const [intakeStep, setIntakeStep] = useState(0);
-  const [intake, setIntake] = useState({ name: "", email: "", notes: "" });
+  const [intake, setIntake] = useState({ name: "", email: "" });
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -187,7 +187,7 @@ function Booking() {
     if (f.get("website")) return;
     if (intakeStep === 0) {
       if (!String(f.get("name") || "").trim()) { setMessage("Please enter your name before continuing."); return; }
-      setIntake({ name: String(f.get("name")).trim(), email: String(f.get("email")).trim(), notes: "" });
+      setIntake({ name: String(f.get("name")).trim(), email: String(f.get("email")).trim() });
     } else {
       const question = profile!.intake_questions[intakeStep - 1];
       const answer = question.type === "multiple" ? f.getAll("answer-" + question.id).map(String).join("\n") : String(f.get("answer-" + question.id) || "").trim();

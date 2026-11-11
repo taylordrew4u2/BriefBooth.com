@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 type Service = { id: string; title: string; description?: string; duration: number };
 type Config = {
-  profile: { name: string; timezone: string; intake_questions?: { id: string; options?: string[] }[] };
+  profile: { timezone: string; intake_questions?: { id: string; options?: string[] }[] };
   services: Service[];
   preferences?: { horizon_days?: number };
 };
@@ -24,11 +24,9 @@ const projectTypeLabels: Record<string, string> = {
 };
 type Booking = {
   id: string;
-  bookingId?: string;
   title?: string;
   service_title?: string;
   starts_at: string;
-  ends_at: string;
   status: string;
   client_name?: string;
   client_email?: string;
@@ -42,7 +40,7 @@ type Booking = {
   email_uncertain?: boolean;
   email_queued?: boolean;
   email_failed?: boolean;
-  reschedule?: { operation_id: string; starts_at: string; ends_at: string; state: string } | null;
+  reschedule?: { operation_id: string; starts_at: string } | null;
 };
 type EmailStatus = Pick<Booking, "email_pending" | "email_uncertain" | "email_queued" | "email_failed">;
 function clientEmailStatus(value: EmailStatus) {
@@ -199,7 +197,11 @@ export function RecoveryStatus() {
     if (!token) return;
     const controller = new AbortController();
     Promise.resolve().then(() => { setBusy(true); setError(""); });
-    api<Booking | ({ booking: Booking } & EmailStatus)>("manage", { token, signal: controller.signal }).then(value => { if (controller.signal.aborted) return; setBooking("booking" in value ? value.booking : value); setEmailStatus(value); })
+    api<{ booking: Booking } & EmailStatus>("manage", { token, signal: controller.signal }).then(value => {
+      if (controller.signal.aborted) return;
+      setBooking(value.booking);
+      setEmailStatus(value);
+    })
       .catch(e => { if (!controller.signal.aborted) setError(message(e)); })
       .finally(() => { if (!controller.signal.aborted) setBusy(false); });
     return () => controller.abort();

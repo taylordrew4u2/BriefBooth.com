@@ -19,17 +19,18 @@ function ConnectionNotice() {
   </section>;
 }
 
-export function RecoveryAccountLinks({ view }: { view: "account" | "client" | "connection" }) {
-  return <Suspense fallback={<RecoveryAccessContent view={view} connection={view === "connection"} />}><RecoveryAccountIntent view={view} /></Suspense>;
+type AccountView = "account" | "client";
+
+export function RecoveryAccountLinks({ view }: { view: AccountView }) {
+  return <Suspense fallback={<RecoveryAccessContent view={view} connection={false} />}><RecoveryAccountIntent view={view} /></Suspense>;
 }
 
-function RecoveryAccountIntent({ view }: { view: "account" | "client" | "connection" }) {
-  const zoomIntent = useZoomConnectionIntent();
-  const connection = view === "connection" || zoomIntent === true;
+function RecoveryAccountIntent({ view }: { view: AccountView }) {
+  const connection = useZoomConnectionIntent();
   return <RecoveryAccessContent view={view} connection={connection} />;
 }
 
-function RecoveryAccessContent({ view, connection }: { view: "account" | "client" | "connection"; connection: boolean }) {
+function RecoveryAccessContent({ view, connection }: { view: AccountView; connection: boolean }) {
   return <>
     <header className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-5 py-6"><Logo /><Link href="/" className="text-sm underline underline-offset-4">Home</Link></header>
     <main id="main" className="mx-auto max-w-3xl space-y-6 px-5 pb-16 pt-6">
@@ -58,5 +59,5 @@ export function RecoveryStudio() {
 
 function RecoveryStudioIntent() {
   const zoomIntent = useZoomConnectionIntent();
-  return zoomIntent ? <RecoveryAccessContent view="connection" connection /> : <RecoveryReview />;
+  return zoomIntent ? <RecoveryAccessContent view="account" connection /> : <RecoveryReview />;
 }

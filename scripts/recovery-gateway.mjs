@@ -6,6 +6,6 @@ export default {
     if (new URL(request.url).pathname.startsWith('/api/recovery/')) {
       return handleRecovery(request, env, ctx);
     }
-    return gateway.fetch(request, env);
+    return gateway.fetch(request);
   },
 };

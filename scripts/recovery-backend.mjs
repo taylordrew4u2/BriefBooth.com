@@ -304,4 +304,4 @@ export async function handleRecovery(request,env,ctx){try{
  if(request.method==='POST'&&path==='review')return await review(request,env,config,await body(request),ctx);
  return json({error:'Not found.'},404);
  }catch(error){if(error instanceof HttpError)return json({error:error.message},error.status);return json({error:'Booking is temporarily unavailable. Your existing request, if any, is still saved.'},503);}}
-export const recoveryTest={localInstant,schedule,digest,transition,resetTokenCache(){tokenCache=undefined;}};
+export const recoveryTest={localInstant,schedule,digest,transition};

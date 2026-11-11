@@ -1,7 +1,7 @@
 // Public Zoom callbacks use the verified BriefBooth domain. No secrets live here.
 const upstream='https://kjjfpacypvdfdktkssst.supabase.co/functions/v1/zoom';
 export default {
- async fetch(request,env){
+ async fetch(request){
   const url=new URL(request.url);
   const isGoogle=url.pathname==='/api/google/callback'&&request.method==='GET';
   const isCalendar=/^\/api\/calendar\/[0-9a-f-]{36}\.ics$/i.test(url.pathname)&&request.method==='GET';

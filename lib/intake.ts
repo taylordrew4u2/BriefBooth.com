@@ -9,7 +9,7 @@ export const defaultQuestions: IntakeQuestion[] = [
   { id: "goals", label: "What would you like to discuss?", type: "long", required: false },
 ];
 
-export type IntakeTemplate = {
+type IntakeTemplate = {
   id: string;
   name: string;
   description: string;
