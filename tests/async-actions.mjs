@@ -210,3 +210,57 @@ for (const [file,label] of [['components/reschedule-booking.tsx','Request new ti
   assert.equal(type?.initializer?.text,'submit',`${label} must trigger the form handler`);
 }
 console.log('PASS rescheduling and appointment notes retain native form submission');
+
+// Run the actual owner-review refresh effect after an action. A background read
+// may fail independently of a successful mutation, or succeed after a rejection.
+function reviewRefresh(context) {
+  const file='components/recovery-client.tsx';
+  const source=ts.createSourceFile(file,fs.readFileSync(file,'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+  const component=source.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='RecoveryReview');
+  const effect=component.body.statements.find(node=>ts.isExpressionStatement(node)&&ts.isCallExpression(node.expression)&&node.expression.expression.getText(source)==='useEffect'&&node.expression.arguments[1]?.getText(source)==='[token, refresh]');
+  assert(effect,'Missing owner-review refresh effect');
+  const js=ts.transpileModule(`const refreshEffect=${effect.expression.arguments[0].getText(source)};`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+  return vm.runInNewContext(`${js};refreshEffect`,context)();
+}
+function reviewContext(api) {
+  const original={id:'booking',status:'confirmed',starts_at:'2026-11-16T15:00:00Z',ends_at:'2026-11-16T15:30:00Z',client_email:'client@example.com',meet_url:'https://meet.google.com/abc-defg-hij',email_pending:true,email_failed:true};
+  const state={bookings:[original,{id:'other',status:'pending_approval'}],error:'',actionError:'',busy:false,loaded:true,refresh:0,notice:''};
+  const context={api,token:'test-only-owner-key',lock:{current:false},visiblePages:{current:1},AbortController,
+    message:error=>error.message,notificationStatus:()=> 'Notification status',
+    setBookings:value=>{state.bookings=typeof value==='function'?value(state.bookings):value;},
+    setError:value=>{state.error=value;},setActionError:value=>{state.actionError=value;},
+    setBusy:value=>{state.busy=value;},setLoaded:value=>{state.loaded=value;},
+    setNextCursor:()=>{},setDeclineId:()=>{},
+    setNotificationNotice:value=>{state.notice=value;},
+    setRefresh:value=>{state.refresh=typeof value==='function'?value(state.refresh):value;},
+  };
+  return {state,context,original};
+}
+for(const result of ['pending','confirmed']) {
+  const startsAt='2026-11-17T16:00:00Z';
+  const operationId='test-reschedule-operation';
+  const response={booking:{id:'booking',status:'confirmed',starts_at:result==='pending'?'2026-11-16T15:00:00Z':startsAt,ends_at:result==='pending'?'2026-11-16T15:30:00Z':'2026-11-17T16:30:00Z',meet_url:'https://meet.google.com/abc-defg-hij',reschedule:result==='pending'?{operation_id:operationId,starts_at:startsAt,ends_at:'2026-11-17T16:30:00Z',state:'applying'}:null},...(result==='confirmed'?{email_pending:false,email_failed:false,email_queued:false,email_uncertain:false}:{})};
+  const {state,context}=reviewContext(async path=>{if(path==='reschedule')return response;throw Error('Request refresh is unavailable');});
+  assert.equal(await handler('components/recovery-client.tsx','reschedule',context)('booking',startsAt,operationId),true);
+  assert.equal(state.bookings[0].starts_at,response.booking.starts_at,'Known mutation results appear before a follow-up read');
+  assert.equal(state.bookings[0].client_email,'client@example.com','The client-safe mutation response must preserve owner-only email data');
+  assert.equal(state.bookings[1].id,'other','Updating one booking preserves other requests');
+  assert.equal(state.bookings[0].email_pending,result==='pending','Omitted delivery flags are preserved; explicit false clears stale flags');
+  assert.equal(state.bookings[0].email_failed,result==='pending');
+  const cleanup=reviewRefresh(context);await new Promise(setImmediate);cleanup();
+  assert.equal(state.error,'Request refresh is unavailable');
+  assert.equal(state.bookings[0].reschedule?.operation_id,result==='pending'?operationId:undefined,'A failed read must preserve the pending operation so it can be finished');
+  assert.equal(state.bookings[0].starts_at,response.booking.starts_at,'A failed read must not revert a confirmed new time');
+  assert.equal(state.bookings[0].meet_url,response.booking.meet_url,'The existing Meet link is retained');
+  assert.equal(state.busy,false);assert.equal(context.lock.current,false);
+}
+for(const failure of ['That time is no longer available','Google could not finish the time change']) {
+  const {state,context,original}=reviewContext(async path=>{if(path==='reschedule')throw Error(failure);return {bookings:[original],next_cursor:null};});
+  assert.equal(await handler('components/recovery-client.tsx','reschedule',context)('booking','2026-11-17T16:00:00Z','test-operation'),false);
+  const cleanup=reviewRefresh(context);await new Promise(setImmediate);cleanup();
+  assert.equal(state.actionError,failure,'A successful refresh must not erase the rejected action explanation');
+  assert.equal(state.error,'');assert.equal(state.loaded,true);
+  assert.equal(state.bookings[0].starts_at,original.starts_at,'A rejected move must leave the original time unchanged');
+  assert.equal(state.busy,false);assert.equal(context.lock.current,false);
+}
+console.log('PASS owner rescheduling: pending/confirmed mutation survives failed refresh, owner contact and email flags are preserved, rejection feedback survives successful refresh');

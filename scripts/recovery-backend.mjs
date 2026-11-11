@@ -4,6 +4,8 @@ import { deliverRecoveryEmails as deliver, readRecoveryMailFlags, reconcileRecov
 // Secrets are provided only through Cloudflare bindings, never public config.
 const DAY=86400000, MINUTE=60000;
 const ACTIVE="'pending_approval','confirming','confirmed','cancelling'";
+const RESCHEDULE_JSON=`SELECT json_object('operation_id',r.operation_id,'starts_ms',r.starts_ms,'ends_ms',r.ends_ms,'state',r.state) FROM recovery_reschedule_operations r WHERE r.booking_id=b.id AND r.state IN ('reserved','applying') LIMIT 1`;
+const uuid=value=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const encoder=new TextEncoder();
 class HttpError extends Error {constructor(status,message){super(message);this.status=status;}}
 const fail=(status,message)=>{throw new HttpError(status,message);};
@@ -49,7 +51,7 @@ async function rate(request,env,kind,limit,windowMs,identity){
 }
 async function body(request){const size=Number(request.headers.get('content-length')||0);if(size>20000)fail(413,'Your request is too large.');if(!request.headers.get('content-type')?.toLowerCase().startsWith('application/json'))fail(415,'Use a JSON request.');const raw=await request.text();if(encoder.encode(raw).length>20000)fail(413,'Your request is too large.');try{const b=JSON.parse(raw);if(!b||typeof b!=='object'||Array.isArray(b))throw Error();return b;}catch{fail(400,'This request could not be read.');}}
 async function owner(request,env){await rate(request,env,'owner',30,15*MINUTE);const token=bearer(request);if(token.length<32||token.length>512||!equal(await digest(token),env.RECOVERY_OWNER_TOKEN_SHA256))fail(401,'Enter the private review key to continue.');}
-async function managed(request,env){const token=bearer(request);if(token.length<50||token.length>150)fail(404,'This booking link is unavailable.');const hash=await digest(token);const row=await env.RECOVERY_DB.prepare("SELECT * FROM recovery_bookings WHERE client_token_hash=? AND source='recovery'").bind(hash).first();if(!row)fail(404,'This booking link is unavailable.');return row;}
+async function managed(request,env){const token=bearer(request);if(token.length<50||token.length>150)fail(404,'This booking link is unavailable.');const hash=await digest(token);const row=await env.RECOVERY_DB.prepare(`SELECT b.*, (${RESCHEDULE_JSON}) AS reschedule_json FROM recovery_bookings b WHERE client_token_hash=? AND source='recovery'`).bind(hash).first();if(!row)fail(404,'This booking link is unavailable.');return row;}
 let tokenCache;
 async function accessToken(env){
  if(!env.GOOGLE_CLIENT_ID||!env.GOOGLE_CLIENT_SECRET||!env.GOOGLE_REFRESH_TOKEN)fail(503,'Calendar connection is unavailable. No booking was confirmed.');
@@ -58,10 +60,10 @@ async function accessToken(env){
  let r;try{r=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,refresh_token:env.GOOGLE_REFRESH_TOKEN,grant_type:'refresh_token'}),signal:AbortSignal.timeout(10000)});}catch{fail(503,'Calendar is temporarily unavailable. Please try again.');}
  if(!r.ok)fail(503,'Calendar connection needs attention. No booking was confirmed.');const data=await r.json();if(!data.access_token)fail(503,'Calendar connection needs attention.');tokenCache={key:cacheKey,token:data.access_token,until:Date.now()+Math.min(Number(data.expires_in)||300,3600)*1000};return data.access_token;
 }
-async function google(env,path,method='GET',data,knownToken){const token=knownToken||await accessToken(env);try{return await fetch('https://www.googleapis.com/calendar/v3/'+path,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data),signal:AbortSignal.timeout(10000)});}catch{fail(503,'Calendar is temporarily unavailable. Please try again.');}}
+async function google(env,path,method='GET',data,knownToken,extraHeaders={}){const token=knownToken||await accessToken(env);try{return await fetch('https://www.googleapis.com/calendar/v3/'+path,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json',...extraHeaders},body:data===undefined?undefined:JSON.stringify(data),signal:AbortSignal.timeout(10000)});}catch{fail(503,'Calendar is temporarily unavailable. Please try again.');}}
 async function busy(env,start,end){const r=await google(env,'freeBusy','POST',{timeMin:new Date(start).toISOString(),timeMax:new Date(end).toISOString(),items:[{id:'primary'}]});if(!r.ok)fail(503,'Live availability could not be checked. Please try again.');const data=await r.json();const calendar=data.calendars?.primary;if(!calendar||calendar.errors?.length||!Array.isArray(calendar.busy))fail(503,'Live availability could not be checked. Please try again.');const periods=calendar.busy.map(x=>({start:Date.parse(x.start),end:Date.parse(x.end)}));if(periods.some(x=>!Number.isFinite(x.start)||!Number.isFinite(x.end)||x.end<=x.start))fail(503,'Live availability could not be checked. Please try again.');return periods;}
 function overlap(start,end,otherStart,otherEnd,buffer){return start<otherEnd+buffer&&end>otherStart-buffer;}
-async function slots(env,config,svc,day){const times=schedule(config,svc,day,Date.now());if(!times.length)return [];const buffer=config.preferences.buffer_minutes*MINUTE,first=times[0],last=times.at(-1)+svc.duration*MINUTE;const [calendar,rows]=await Promise.all([busy(env,first-buffer,last+buffer),env.RECOVERY_DB.prepare(`SELECT starts_ms,ends_ms FROM recovery_bookings WHERE owner_id=? AND status IN (${ACTIVE}) AND starts_ms<? AND ends_ms>?`).bind(config.profile.id,last+buffer,first-buffer).all()]);return times.filter(t=>![...calendar,...rows.results.map(b=>({start:b.starts_ms,end:b.ends_ms}))].some(b=>overlap(t,t+svc.duration*MINUTE,b.start,b.end,buffer))).map(t=>new Date(t).toISOString());}
+async function slots(env,config,svc,day){const times=schedule(config,svc,day,Date.now());if(!times.length)return [];const buffer=config.preferences.buffer_minutes*MINUTE,first=times[0],last=times.at(-1)+svc.duration*MINUTE;const [calendar,rows]=await Promise.all([busy(env,first-buffer,last+buffer),env.RECOVERY_DB.prepare(`SELECT starts_ms,ends_ms FROM recovery_bookings WHERE owner_id=? AND status IN (${ACTIVE}) AND starts_ms<? AND ends_ms>? UNION ALL SELECT r.starts_ms,r.ends_ms FROM recovery_reschedule_operations r JOIN recovery_bookings b ON b.id=r.booking_id WHERE b.owner_id=? AND b.status IN (${ACTIVE}) AND r.state IN ('reserved','applying') AND r.starts_ms<? AND r.ends_ms>?`).bind(config.profile.id,last+buffer,first-buffer,config.profile.id,last+buffer,first-buffer).all()]);return times.filter(t=>![...calendar,...rows.results.map(b=>({start:b.starts_ms,end:b.ends_ms}))].some(b=>overlap(t,t+svc.duration*MINUTE,b.start,b.end,buffer))).map(t=>new Date(t).toISOString());}
 function validation(config,input){
  const name=typeof input.name==='string'?input.name.trim():'';const email=typeof input.email==='string'?input.email.trim().toLowerCase():'';const notes=typeof input.notes==='string'?input.notes.trim():'';
  if(name.length<1||name.length>120||/[\r\n\u0000-\u001f]/.test(name))fail(400,'Enter your name.');
@@ -74,7 +76,7 @@ function validation(config,input){
  if(typeof input.requestId!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.requestId))fail(400,'Refresh the page and try again.');
  const starts=Date.parse(input.startsAt);if(!Number.isFinite(starts)||starts%MINUTE!==0)fail(400,'Choose an available appointment time.');return {name,email,notes:details,requestId:input.requestId.toLowerCase(),starts};
 }
-function safeBooking(row,config,admin=false){const b={id:row.id,title:row.title,client_name:row.client_name,starts_at:new Date(row.starts_ms).toISOString(),ends_at:new Date(row.ends_ms).toISOString(),status:row.status,meeting_error:row.meeting_error||null,meeting_url:row.status==='confirmed'?row.meeting_url:null,consultant_name:config.profile.name,timezone:config.profile.timezone,notes:row.notes,source:row.source};return admin?{...b,client_email:row.client_email,created_at:new Date(row.created_ms).toISOString()}:b;}
+function safeBooking(row,config,admin=false){const pending=row.reschedule_json?JSON.parse(row.reschedule_json):null;const reschedule=pending&&['confirmed','cancelling'].includes(row.status)?{operation_id:pending.operation_id,starts_at:new Date(pending.starts_ms).toISOString(),ends_at:new Date(pending.ends_ms).toISOString(),state:pending.state}:null;const b={id:row.id,service_id:row.service_id,reschedule,title:row.title,client_name:row.client_name,starts_at:new Date(row.starts_ms).toISOString(),ends_at:new Date(row.ends_ms).toISOString(),status:row.status,meeting_error:row.meeting_error||null,meeting_url:row.status==='confirmed'?row.meeting_url:null,consultant_name:config.profile.name,timezone:config.profile.timezone,notes:row.notes,source:row.source};return admin?{...b,client_email:row.client_email,created_at:new Date(row.created_ms).toISOString()}:b;}
 function readAdminCursor(value){
  if(value===null)return null;
  if(value.length>160||!value||!/^[A-Za-z0-9_-]+$/.test(value))fail(400,'This page link is invalid. Refresh your booking list.');
@@ -83,14 +85,14 @@ function readAdminCursor(value){
  return parts;
 }
 function nextAdminCursor(row){return btoa(JSON.stringify([row.created_ms,row.id])).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'');}
-async function queue(env,row,kind,recipient,subject,text){if(!recipient)return;await env.RECOVERY_DB.prepare('INSERT OR IGNORE INTO recovery_emails(id,booking_id,kind,recipient,subject,body,created_ms) SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM recovery_bookings WHERE id=? AND status=?)').bind(`${row.id}:${kind}`,row.id,kind,recipient,subject,text,Date.now(),row.id,row.status).run();}
+async function queue(env,row,kind,recipient,subject,text){if(!recipient)return;const version=row.notification_version||0;await env.RECOVERY_DB.prepare('INSERT OR IGNORE INTO recovery_emails(id,booking_id,kind,recipient,subject,body,created_ms,booking_version) SELECT ?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM recovery_bookings WHERE id=? AND status=? AND notification_version=?)').bind(`${row.id}:${kind}${version?':v'+version:''}`,row.id,kind,recipient,subject,text,Date.now(),version,row.id,row.status,version).run();}
 async function pendingMail(env,row,config,token){const when=new Date(row.starts_ms).toLocaleString('en-US',{timeZone:config.profile.timezone,dateStyle:'full',timeStyle:'short'});const details=`${row.title}\n${when} (${config.profile.timezone})\nConsultant: ${config.profile.name}`;const link=`https://briefbooth.com/booking-status/#token=${encodeURIComponent(token)}`;
  await queue(env,row,'request_client',row.client_email,'Consultation request received — awaiting approval',`Your request is saved and awaiting consultant approval. This is not a confirmed appointment.\n\n${details}\n\nView or cancel your request using this private link:\n${link}`);
  await queue(env,row,'request_owner',env.RECOVERY_OWNER_EMAIL,'New consultation request — approval needed',`${row.client_name} (${row.client_email}) requested:\n${details}\n\n${row.notes}\n\nReview this request inside BriefBooth:\nhttps://briefbooth.com/booking-review/\nUse your private review key. This request is not confirmed.`);
 }
-async function statusMail(env,row,config){await env.RECOVERY_DB.prepare("UPDATE recovery_emails SET state='superseded' WHERE booking_id=? AND state='queued' AND kind NOT LIKE ? AND EXISTS(SELECT 1 FROM recovery_bookings WHERE id=recovery_emails.booking_id AND status=?)").bind(row.id,row.status+'_%',row.status).run();const token=await capability(env,row.id,row.request_id);const link=`https://briefbooth.com/booking-status/#token=${encodeURIComponent(token)}`;const when=new Date(row.starts_ms).toLocaleString('en-US',{timeZone:config.profile.timezone,dateStyle:'full',timeStyle:'short'});const confirmed=row.status==='confirmed'&&row.meeting_url;const label=confirmed?'confirmed':row.status==='declined'?'declined':'cancelled';const text=`Your consultation is ${label}.\n\n${row.title}\n${when} (${config.profile.timezone})\nConsultant: ${config.profile.name}\n${confirmed?'Google Meet: '+row.meeting_url+'\n':''}\nPrivate booking status:\n${link}`;
- await queue(env,row,label+'_client',row.client_email,`Your BriefBooth consultation is ${label}`,text);
- await queue(env,row,label+'_owner',env.RECOVERY_OWNER_EMAIL,`BriefBooth consultation ${label}`,`${row.client_name} (${row.client_email})\n${text}\n\nReview appointments: https://briefbooth.com/booking-review/`);
+async function statusMail(env,row,config){await env.RECOVERY_DB.prepare("UPDATE recovery_emails SET state='superseded' WHERE booking_id=? AND state='queued' AND (kind NOT LIKE ? OR booking_version<>?) AND EXISTS(SELECT 1 FROM recovery_bookings WHERE id=recovery_emails.booking_id AND status=? AND notification_version=?)").bind(row.id,row.status+'_%',row.notification_version||0,row.status,row.notification_version||0).run();const token=await capability(env,row.id,row.request_id);const link=`https://briefbooth.com/booking-status/#token=${encodeURIComponent(token)}`;const when=new Date(row.starts_ms).toLocaleString('en-US',{timeZone:config.profile.timezone,dateStyle:'full',timeStyle:'short'});const confirmed=row.status==='confirmed'&&row.meeting_url;const label=confirmed?'confirmed':row.status==='declined'?'declined':'cancelled';const announced=confirmed&&row.notification_version>0?'rescheduled':label;const text=`Your consultation is ${announced}.\n\n${row.title}\n${when} (${config.profile.timezone})\nConsultant: ${config.profile.name}\n${confirmed?'Google Meet: '+row.meeting_url+'\n':''}\nPrivate booking status:\n${link}`;
+ await queue(env,row,label+'_client',row.client_email,`Your BriefBooth consultation is ${announced}`,text);
+ await queue(env,row,label+'_owner',env.RECOVERY_OWNER_EMAIL,`BriefBooth consultation ${announced}`,`${row.client_name} (${row.client_email})\n${text}\n\nReview appointments: https://briefbooth.com/booking-review/`);
 }
 async function book(request,env,config,input,ctx){const v=validation(config,input),svc=service(config,input.serviceId);const end=v.starts+svc.duration*MINUTE;const fingerprint=await digest(JSON.stringify([svc.id,v.starts,v.name,v.email,v.notes]));
  const previous=await env.RECOVERY_DB.prepare('SELECT * FROM recovery_bookings WHERE request_id=?').bind(v.requestId).first();
@@ -99,17 +101,17 @@ async function book(request,env,config,input,ctx){const v=validation(config,inpu
  const day=localParts(v.starts,config.profile.timezone).day;if(!schedule(config,svc,day,Date.now()).includes(v.starts))fail(409,'That appointment time is no longer available. Choose another time.');
  const buffer=config.preferences.buffer_minutes*MINUTE;const periods=await busy(env,v.starts-buffer,end+buffer);if(periods.some(p=>overlap(v.starts,end,p.start,p.end,buffer)))fail(409,'That appointment time is no longer available. Choose another time.');
  const id=crypto.randomUUID(),token=await capability(env,id,v.requestId),hash=await digest(token),now=Date.now();
- const result=await env.RECOVERY_DB.prepare(`INSERT OR IGNORE INTO recovery_bookings(id,owner_id,service_id,title,starts_ms,ends_ms,client_name,client_email,notes,status,request_id,request_hash,client_token_hash,created_ms,updated_ms) SELECT ?,?,?,?,?,?,?,?,?,'pending_approval',?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM recovery_bookings WHERE owner_id=? AND status IN (${ACTIVE}) AND starts_ms<? AND ends_ms>?) RETURNING *`).bind(id,config.profile.id,svc.id,svc.title,v.starts,end,v.name,v.email,v.notes,v.requestId,fingerprint,hash,now,now,config.profile.id,end+buffer,v.starts-buffer).first();
+ const result=await env.RECOVERY_DB.prepare(`INSERT OR IGNORE INTO recovery_bookings(id,owner_id,service_id,title,starts_ms,ends_ms,client_name,client_email,notes,status,request_id,request_hash,client_token_hash,created_ms,updated_ms) SELECT ?,?,?,?,?,?,?,?,?,'pending_approval',?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM recovery_bookings WHERE owner_id=? AND status IN (${ACTIVE}) AND starts_ms<? AND ends_ms>?) AND NOT EXISTS(SELECT 1 FROM recovery_reschedule_operations r JOIN recovery_bookings b ON b.id=r.booking_id WHERE b.owner_id=? AND b.status IN (${ACTIVE}) AND r.state IN ('reserved','applying') AND r.starts_ms<? AND r.ends_ms>?) RETURNING *`).bind(id,config.profile.id,svc.id,svc.title,v.starts,end,v.name,v.email,v.notes,v.requestId,fingerprint,hash,now,now,config.profile.id,end+buffer,v.starts-buffer,config.profile.id,end+buffer,v.starts-buffer).first();
  if(!result){const collision=await env.RECOVERY_DB.prepare('SELECT * FROM recovery_bookings WHERE request_id=?').bind(v.requestId).first();if(collision&&equal(collision.request_hash,fingerprint)){const stable=await capability(env,collision.id,collision.request_id);return json({token:stable,status:collision.status,bookingId:collision.id,...await recoveryMailFlags(env,collision.id,true)});}fail(409,'That appointment time has just been taken. Choose another time.');}
  await pendingMail(env,result,config,token);await deliver(env,id,ctx);return json({token,status:result.status,bookingId:id,...await recoveryMailFlags(env,id,true)},201);
 }
-async function lease(env,id){const nonce=crypto.randomUUID();const row=await env.RECOVERY_DB.prepare("UPDATE recovery_bookings SET action_nonce=?,action_until=? WHERE id=? AND source='recovery' AND action_until<? RETURNING *").bind(nonce,Date.now()+120000,id,Date.now()).first();if(!row)fail(409,'This booking is already being updated. Please try again shortly.');return {row,nonce};}
+async function lease(env,id){const nonce=crypto.randomUUID();const row=await env.RECOVERY_DB.prepare("UPDATE recovery_bookings SET action_nonce=?,action_until=? WHERE id=? AND source='recovery' AND action_until<? RETURNING *").bind(nonce,Date.now()+120000,id,Date.now()).first();if(!row)fail(409,'This booking is already being updated. Please try again shortly.');const active=await env.RECOVERY_DB.prepare(`SELECT (${RESCHEDULE_JSON}) AS reschedule_json FROM recovery_bookings b WHERE id=?`).bind(id).first();row.reschedule_json=active?.reschedule_json;return {row,nonce};}
 async function renew(env,id,nonce){const now=Date.now();const ok=await env.RECOVERY_DB.prepare('UPDATE recovery_bookings SET action_until=? WHERE id=? AND action_nonce=? AND action_until>? RETURNING id').bind(now+120000,id,nonce,now).first();if(!ok)fail(409,'This booking changed while it was being updated. Refresh and try again.');}
 async function transition(env,id,nonce,expected,status,extra={}){const now=Date.now();const entries=Object.entries(extra);if(entries.some(([k])=>!['event_id','meeting_url','meeting_error'].includes(k)))throw Error('Invalid transition field');const fields=entries.map(([k])=>k+'=?');const params=[status,now,...entries.map(([,v])=>v),id,nonce,now,...expected];const row=await env.RECOVERY_DB.prepare(`UPDATE recovery_bookings SET status=?,updated_ms=?${fields.length?','+fields.join(','):''} WHERE id=? AND action_nonce=? AND action_until>? AND status IN (${expected.map(()=>'?').join(',')}) RETURNING *`).bind(...params).first();if(!row)fail(409,'This booking changed while it was being updated. Refresh and try again.');return row;}
 async function release(env,id,nonce){await env.RECOVERY_DB.prepare('UPDATE recovery_bookings SET action_nonce=NULL,action_until=0 WHERE id=? AND action_nonce=?').bind(id,nonce).run();}
 function eventId(id){return 'bb'+id.replaceAll('-','').toLowerCase();}
 function meetingUrl(event){const url=event.conferenceData?.entryPoints?.find(x=>x.entryPointType==='video')?.uri;return typeof url==='string'&&/^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}$/.test(url)?url:null;}
-async function review(request,env,config,input,ctx){await owner(request,env);if(typeof input.bookingId!=='string'||typeof input.approve!=='boolean')fail(400,'Choose a request to review.');const existing=await env.RECOVERY_DB.prepare('SELECT * FROM recovery_bookings WHERE id=? AND owner_id=?').bind(input.bookingId,config.profile.id).first();if(!existing)fail(404,'Booking not found.');if(existing.source!=='recovery')fail(409,'This appointment belongs to the previous booking system.');if(!input.approve&&['confirming','cancelling'].includes(existing.status))return cancelBooking(env,config,existing,ctx);const {row,nonce}=await lease(env,existing.id);try{
+async function review(request,env,config,input,ctx){await owner(request,env);if(typeof input.bookingId!=='string'||typeof input.approve!=='boolean')fail(400,'Choose a request to review.');const existing=await env.RECOVERY_DB.prepare('SELECT * FROM recovery_bookings WHERE id=? AND owner_id=?').bind(input.bookingId,config.profile.id).first();if(!existing)fail(404,'Booking not found.');if(existing.source!=='recovery')fail(409,'This appointment belongs to the previous booking system.');if(!input.approve&&['confirmed','confirming','cancelling','cancelled'].includes(existing.status))return cancelBooking(env,config,existing,ctx);const {row,nonce}=await lease(env,existing.id);try{
  if(!input.approve){if(row.status==='declined'){await statusMail(env,row,config);await deliver(env,row.id,ctx);return json({booking:safeBooking(row,config),...await recoveryMailFlags(env,row.id)});}if(row.status!=='pending_approval')fail(409,'This request has already been reviewed.');Object.assign(row,await transition(env,row.id,nonce,['pending_approval'],'declined'));await statusMail(env,row,config);await deliver(env,row.id,ctx);return json({booking:safeBooking(row,config),...await recoveryMailFlags(env,row.id)});}
  if(row.status==='confirmed'){await statusMail(env,row,config);await deliver(env,row.id,ctx);return json({booking:safeBooking(row,config),...await recoveryMailFlags(env,row.id)});}
  if(!['pending_approval','confirming'].includes(row.status))fail(409,'This request can no longer be approved.');if(row.starts_ms<=Date.now())fail(409,'The requested appointment time has passed.');
@@ -137,16 +139,142 @@ async function review(request,env,config,input,ctx){await owner(request,env);if(
  Object.assign(row,await transition(env,row.id,nonce,['pending_approval','confirming'],'confirmed',{event_id:gid,meeting_url:url,meeting_error:null}));await statusMail(env,row,config);await deliver(env,row.id,ctx);return json({booking:safeBooking(row,config),...await recoveryMailFlags(env,row.id)});
  }finally{await release(env,row.id,nonce);}}
 async function cancelBooking(env,config,existing,ctx,clientOnly=false){const {row,nonce}=await lease(env,existing.id);try{
- if(['cancelled','declined'].includes(row.status)){await statusMail(env,row,config);await deliver(env,row.id,ctx);return json({booking:safeBooking(row,config),...await recoveryMailFlags(env,row.id,clientOnly)});}if(row.starts_ms<=Date.now())fail(409,'This appointment has already started. Contact your consultant.');
+ if(['cancelled','declined'].includes(row.status)){await statusMail(env,row,config);await deliver(env,row.id,ctx);return json({booking:safeBooking(row,config),...await recoveryMailFlags(env,row.id,clientOnly)});}const pendingMove=row.reschedule_json?JSON.parse(row.reschedule_json):null;if(row.starts_ms<=Date.now()&&!(pendingMove&&(!clientOnly||pendingMove.starts_ms>Date.now())))fail(409,'This appointment has already started. Contact your consultant.');
  if(['confirmed','confirming','cancelling'].includes(row.status)){Object.assign(row,await transition(env,row.id,nonce,['confirmed','confirming','cancelling'],'cancelling'));await renew(env,row.id,nonce);const path='calendars/primary/events/'+eventId(row.id);const check=await google(env,path);if(check.ok){const event=await check.json();if(event.status!=='cancelled'&&event.extendedProperties?.private?.briefbooth_booking_id!==row.id)fail(409,'The calendar event could not be verified. Contact your consultant.');}else if(check.status!==404&&check.status!==410)fail(503,'Cancellation is saved but the calendar check is delayed. Please try again.');
   // A timed-out creation can still complete at Google after its first lookup
   // returns 404. Keep the reservation until that uncertain event is reconciled.
   // A confirmed event (Meet URL present), or Google's 410 tombstone, is definite.
   if(check.status===404&&row.event_id&&!row.meeting_url)return json({booking:safeBooking(row,config),message:'Google is still checking the earlier meeting request. Cancellation is pending; please retry shortly.'},202);
   await renew(env,row.id,nonce);const r=(check.status===404||check.status===410)?check:await google(env,path,'DELETE');if(!r.ok&&r.status!==404&&r.status!==410)fail(503,'Cancellation is saved but the calendar update is delayed. Please try again.');}
- Object.assign(row,await transition(env,row.id,nonce,['pending_approval','cancelling'],'cancelled',{meeting_url:null,meeting_error:null}));await statusMail(env,row,config);await deliver(env,row.id,ctx);return json({booking:safeBooking(row,config),...await recoveryMailFlags(env,row.id,clientOnly)});
+ Object.assign(row,await transition(env,row.id,nonce,['pending_approval','cancelling'],'cancelled',{meeting_url:null,meeting_error:null}));await env.RECOVERY_DB.prepare("UPDATE recovery_reschedule_operations SET state='cancelled',updated_ms=? WHERE booking_id=? AND state IN ('reserved','applying')").bind(Date.now(),row.id).run();row.reschedule_json=null;await statusMail(env,row,config);await deliver(env,row.id,ctx);return json({booking:safeBooking(row,config),...await recoveryMailFlags(env,row.id,clientOnly)});
  }finally{await release(env,row.id,nonce);}}
 async function cancel(request,env,config,ctx){return cancelBooking(env,config,await managed(request,env),ctx,true);}
+function rescheduleView(row,op){row.reschedule_json=op&&['reserved','applying'].includes(op.state)?JSON.stringify(op):null;return row;}
+async function rescheduleSlots(request,env,config,url){
+ await owner(request,env);
+ const row=await env.RECOVERY_DB.prepare("SELECT * FROM recovery_bookings WHERE id=? AND owner_id=? AND source='recovery'").bind(url.searchParams.get('bookingId')||'',config.profile.id).first();
+ if(!row)fail(404,'Booking not found.');
+ if(row.status!=='confirmed'||row.starts_ms<=Date.now())fail(409,'Only a future confirmed appointment can be rescheduled.');
+ const available=await slots(env,config,service(config,row.service_id),url.searchParams.get('day')||'');
+ const buffer=config.preferences.buffer_minutes*MINUTE;
+ // Free/busy responses can merge the current event with other private events.
+ // Never subtract that interval: conservatively keep the old time and buffer busy.
+ return json({slots:available.filter(value=>!overlap(Date.parse(value),Date.parse(value)+(row.ends_ms-row.starts_ms),row.starts_ms,row.ends_ms,buffer))});
+}
+async function finishReschedule(env,config,row,nonce,op,event,ctx){
+ if(event.status==='cancelled'||event.extendedProperties?.private?.briefbooth_booking_id!==row.id||event.extendedProperties?.private?.briefbooth_reschedule_id!==op.operation_id||Date.parse(event.start?.dateTime)!==op.starts_ms||Date.parse(event.end?.dateTime)!==op.ends_ms||meetingUrl(event)!==row.meeting_url)fail(409,'The updated Google event could not be verified. The change remains reserved; retry or cancel the appointment.');
+ await renew(env,row.id,nonce);const now=Date.now();
+ const results=await env.RECOVERY_DB.batch([
+  env.RECOVERY_DB.prepare(`UPDATE recovery_bookings SET starts_ms=?,ends_ms=?,updated_ms=?,notification_version=notification_version+1
+   WHERE id=? AND action_nonce=? AND action_until>? AND status='confirmed' AND starts_ms=? AND ends_ms=?
+   AND EXISTS(SELECT 1 FROM recovery_reschedule_operations WHERE operation_id=? AND booking_id=recovery_bookings.id AND state IN ('reserved','applying'))`)
+   .bind(op.starts_ms,op.ends_ms,now,row.id,nonce,now,op.previous_starts_ms,op.previous_ends_ms,op.operation_id),
+  env.RECOVERY_DB.prepare(`UPDATE recovery_reschedule_operations SET state='complete',updated_ms=? WHERE operation_id=? AND state IN ('reserved','applying')
+   AND EXISTS(SELECT 1 FROM recovery_bookings WHERE id=recovery_reschedule_operations.booking_id AND action_nonce=? AND action_until>? AND status='confirmed' AND starts_ms=recovery_reschedule_operations.starts_ms AND ends_ms=recovery_reschedule_operations.ends_ms)`)
+   .bind(now,op.operation_id,nonce,now),
+  env.RECOVERY_DB.prepare(`UPDATE recovery_emails SET state='superseded' WHERE booking_id=? AND state='queued'
+   AND booking_version<(SELECT notification_version FROM recovery_bookings WHERE id=?)`).bind(row.id,row.id),
+ ]);
+ if(results[0].meta.changes!==1)fail(409,'This booking changed while it was being updated. Refresh and retry the saved change.');
+ const updated=await env.RECOVERY_DB.prepare('SELECT * FROM recovery_bookings WHERE id=?').bind(row.id).first();
+ await statusMail(env,updated,config);await deliver(env,row.id,ctx);
+ return json({booking:safeBooking(updated,config),...await recoveryMailFlags(env,row.id)});
+}
+async function failReschedule(env,row,nonce,op){
+ await renew(env,row.id,nonce);
+ await env.RECOVERY_DB.prepare(`UPDATE recovery_reschedule_operations SET state='failed',updated_ms=? WHERE operation_id=? AND state IN ('reserved','applying')
+  AND EXISTS(SELECT 1 FROM recovery_bookings WHERE id=recovery_reschedule_operations.booking_id AND action_nonce=? AND action_until>?)`).bind(Date.now(),op.operation_id,nonce,Date.now()).run();
+}
+async function reschedule(request,env,config,input,ctx){
+ await owner(request,env);
+ if(!uuid(input.bookingId)||!uuid(input.operationId))fail(400,'Choose a booking and refresh before rescheduling.');
+ const starts=typeof input.startsAt==='string'?Date.parse(input.startsAt):NaN;
+ if(!Number.isFinite(starts)||starts%MINUTE!==0)fail(400,'Choose an available appointment time.');
+ const requestHash=await digest(JSON.stringify([input.bookingId,starts]));
+ const existing=await env.RECOVERY_DB.prepare("SELECT * FROM recovery_bookings WHERE id=? AND owner_id=? AND source='recovery'").bind(input.bookingId,config.profile.id).first();
+ if(!existing)fail(404,'Booking not found.');
+ const {row,nonce}=await lease(env,existing.id);
+ try{
+  let op=await env.RECOVERY_DB.prepare('SELECT * FROM recovery_reschedule_operations WHERE operation_id=?').bind(input.operationId).first();
+  if(op&&(op.booking_id!==row.id||!equal(op.request_hash,requestHash)))fail(409,'This change ID was already used for a different request. Refresh before choosing another time.');
+  if(op?.state==='complete'){
+   if(['confirmed','cancelled','declined'].includes(row.status)){await statusMail(env,row,config);await deliver(env,row.id,ctx);}
+   return json({booking:safeBooking(row,config),...await recoveryMailFlags(env,row.id)});
+  }
+  if(op&&['failed','cancelled'].includes(op.state))fail(409,'This change is no longer active. Refresh before choosing a new time.');
+  if(row.status!=='confirmed'||(!op&&row.starts_ms<=Date.now()))fail(409,'Only a future confirmed appointment can be rescheduled.');
+  if(!op){
+   const active=await env.RECOVERY_DB.prepare("SELECT operation_id FROM recovery_reschedule_operations WHERE booking_id=? AND state IN ('reserved','applying')").bind(row.id).first();
+   if(active)fail(409,'An earlier time change is still being checked. Retry that change or cancel the appointment first.');
+   const svc=service(config,row.service_id),ends=starts+(row.ends_ms-row.starts_ms),buffer=config.preferences.buffer_minutes*MINUTE;
+   if(!schedule(config,svc,localParts(starts,config.profile.timezone).day,Date.now()).includes(starts))fail(409,'That appointment time is no longer available. Choose another time.');
+   if(overlap(starts,ends,row.starts_ms,row.ends_ms,buffer))fail(409,'Choose a time outside the current appointment and its buffer.');
+   const periods=await busy(env,starts-buffer,ends+buffer);
+   if(periods.some(p=>overlap(starts,ends,p.start,p.end,buffer)))fail(409,'Your Google Calendar is busy at the new time. Choose another time.');
+   await renew(env,row.id,nonce);
+   const check=await google(env,'calendars/primary/events/'+eventId(row.id));
+   if(!check.ok)fail(503,'The existing Google event could not be checked. Nothing was rescheduled.');
+   const event=await check.json();
+   if(event.status==='cancelled'||event.extendedProperties?.private?.briefbooth_booking_id!==row.id||Date.parse(event.start?.dateTime)!==row.starts_ms||Date.parse(event.end?.dateTime)!==row.ends_ms||meetingUrl(event)!==row.meeting_url)fail(409,'The existing Google event has changed. Review it before rescheduling.');
+   if(typeof event.etag!=='string'||!event.etag)fail(503,'Google did not provide the event version needed for a safe update. Nothing was rescheduled.');
+   const now=Date.now();
+   op=await env.RECOVERY_DB.prepare(`INSERT OR IGNORE INTO recovery_reschedule_operations(operation_id,booking_id,request_hash,previous_starts_ms,previous_ends_ms,starts_ms,ends_ms,state,google_etag,created_ms,updated_ms)
+    SELECT ?,?,?,?,?,?,?,'reserved',?,?,?
+    WHERE EXISTS(SELECT 1 FROM recovery_bookings WHERE id=? AND action_nonce=? AND action_until>? AND status='confirmed' AND starts_ms=? AND ends_ms=?)
+    AND NOT EXISTS(SELECT 1 FROM recovery_bookings WHERE owner_id=? AND id<>? AND status IN (${ACTIVE}) AND starts_ms<? AND ends_ms>?)
+    AND NOT EXISTS(SELECT 1 FROM recovery_reschedule_operations r JOIN recovery_bookings b ON b.id=r.booking_id WHERE b.owner_id=? AND b.status IN (${ACTIVE}) AND r.state IN ('reserved','applying') AND r.starts_ms<? AND r.ends_ms>?) RETURNING *`)
+    .bind(input.operationId,row.id,requestHash,row.starts_ms,row.ends_ms,starts,ends,event.etag,now,now,row.id,nonce,now,row.starts_ms,row.ends_ms,config.profile.id,row.id,ends+buffer,starts-buffer,config.profile.id,ends+buffer,starts-buffer).first();
+   if(!op)fail(409,'That appointment time has just been taken, or this booking changed. Refresh and choose another time.');
+  }
+  const pending=(message='The time change is saved and Google is being checked. Both times remain reserved until this finishes. Retry this change shortly.')=>json({booking:safeBooking(rescheduleView(row,op),config),message},202);
+  await renew(env,row.id,nonce);
+  const path='calendars/primary/events/'+eventId(row.id);
+  let found;
+  try{found=await google(env,path);}catch{return pending();}
+  if(!found.ok)return pending();
+  let event=await found.json();
+  const owns=event.status!=='cancelled'&&event.extendedProperties?.private?.briefbooth_booking_id===row.id;
+  if(owns&&event.extendedProperties.private.briefbooth_reschedule_id===op.operation_id&&Date.parse(event.start?.dateTime)===op.starts_ms&&Date.parse(event.end?.dateTime)===op.ends_ms)return await finishReschedule(env,config,row,nonce,op,event,ctx);
+  if(!owns||Date.parse(event.start?.dateTime)!==op.previous_starts_ms||Date.parse(event.end?.dateTime)!==op.previous_ends_ms||event.etag!==op.google_etag){
+   // A different ETag means any delayed conditional request for our saved ETag
+   // can no longer apply. Leave the original booking for owner reconciliation.
+   if(event.etag&&event.etag!==op.google_etag){await failReschedule(env,row,nonce,op);}
+   fail(409,'The Google event changed outside this request. The saved appointment was not overwritten. Review or cancel it before trying again.');
+  }
+  if(op.starts_ms<=Date.now()){
+   if(op.attempts)return pending('The proposed time passed while Google was being checked. No new time change will be sent. Retry to reconcile an earlier update, or cancel the appointment from owner review.');
+   await failReschedule(env,row,nonce,op);fail(409,'The proposed time has passed. The original appointment is unchanged. Choose a new future time.');
+  }
+  const buffer=config.preferences.buffer_minutes*MINUTE;
+  let periods;try{periods=await busy(env,op.starts_ms-buffer,op.ends_ms+buffer);}catch{return pending();}
+  if(periods.some(p=>overlap(op.starts_ms,op.ends_ms,p.start,p.end,buffer))){
+   if(op.attempts)return pending();
+   await failReschedule(env,row,nonce,op);
+   fail(409,'Your Google Calendar is now busy at the new time. The original appointment is unchanged.');
+  }
+  await renew(env,row.id,nonce);const previousAttempts=op.attempts;
+  op=await env.RECOVERY_DB.prepare(`UPDATE recovery_reschedule_operations SET state='applying',attempts=attempts+1,updated_ms=? WHERE operation_id=? AND state IN ('reserved','applying')
+   AND EXISTS(SELECT 1 FROM recovery_bookings WHERE id=recovery_reschedule_operations.booking_id AND action_nonce=? AND action_until>? AND status='confirmed') RETURNING *`).bind(Date.now(),op.operation_id,nonce,Date.now()).first();
+  if(!op)fail(409,'This booking changed while it was being updated. Refresh and retry.');
+  let patched;
+  // The free/busy lookup and journal write can outlast the proposed time.
+  // A counted attempt is only ambiguous after dispatch; this one has not left.
+  if(op.starts_ms<=Date.now()){
+   if(previousAttempts)return pending('The proposed time passed while Google was being checked. No new time change will be sent. Retry to reconcile an earlier update, or cancel the appointment from owner review.');
+   await failReschedule(env,row,nonce,op);fail(409,'The proposed time has passed. The original appointment is unchanged. Choose a new future time.');
+  }
+  try{patched=await google(env,path+'?conferenceDataVersion=1','PATCH',{start:{dateTime:new Date(op.starts_ms).toISOString()},end:{dateTime:new Date(op.ends_ms).toISOString()},extendedProperties:{private:{...event.extendedProperties.private,briefbooth_reschedule_id:op.operation_id}}},undefined,{'If-Match':op.google_etag});}catch{return pending();}
+  if(patched.ok)return await finishReschedule(env,config,row,nonce,op,await patched.json(),ctx);
+  if(!previousAttempts&&[400,401,403,404,410,422].includes(patched.status)){
+   await failReschedule(env,row,nonce,op);
+   fail(503,'Google rejected the time change. The original appointment is unchanged; refresh before trying a new time.');
+  }
+  // 412 can mean an earlier retry already committed, and a lost response can
+  // still finish remotely. Reconcile on the next request; never free either slot.
+  return pending();
+ }finally{await release(env,row.id,nonce);}
+}
+
 export async function handleRecovery(request,env,ctx){try{
  const u=new URL(request.url),allowed=env.RECOVERY_ALLOWED_ORIGIN||'https://briefbooth.com';
  if(u.origin!==allowed||!u.pathname.startsWith('/api/recovery/'))return json({error:'Not found.'},404);
@@ -154,8 +282,14 @@ export async function handleRecovery(request,env,ctx){try{
  const path=u.pathname.slice('/api/recovery/'.length).replace(/\/$/,'');
  if(request.method==='POST'&&request.headers.get('origin')!==allowed)fail(403,'This request must come from BriefBooth.');
  const config=configuration(env);
- if(request.method==='GET'&&path==='config')return json({profile:{...config.profile,intake_questions:[]},services:config.services.map(item=>({...item,description:'Bring an idea, a problem to solve, or just your questions.'})),preferences:config.preferences});
+ if(request.method==='GET'&&path==='config'){
+  const intake_questions=(config.profile.intake_questions||[]).filter(q=>q.id==='project-types');
+  const description='I build websites for businesses and people, from personal portfolios to online stores and booking sites. I also build apps and custom software.';
+  return json({profile:{...config.profile,intake_questions},services:config.services.map(item=>({...item,description})),preferences:config.preferences});
+ }
  if(request.method==='GET'&&path==='slots'){await rate(request,env,'slots',90,MINUTE);return json({slots:await slots(env,config,service(config,u.searchParams.get('service')),u.searchParams.get('day')||'')});}
+ if(request.method==='GET'&&path==='reschedule-slots')return await rescheduleSlots(request,env,config,u);
+ if(request.method==='POST'&&path==='reschedule')return await reschedule(request,env,config,await body(request),ctx);
  if(request.method==='POST'&&path==='book')return await book(request,env,config,await body(request),ctx);
  if(request.method==='GET'&&path==='manage'){await rate(request,env,'manage',90,MINUTE);const row=await managed(request,env);const {retries}=await reconcileRecoveryMail(env,row.id);if(retries.length)scheduleRecoveryMailChecks(env,row.id,ctx,retries);return json({booking:safeBooking(row,config),...await recoveryMailFlags(env,row.id,true)});}
  if(request.method==='POST'&&path==='cancel'){await rate(request,env,'cancel',12,15*MINUTE);return await cancel(request,env,config,ctx);}
@@ -163,7 +297,7 @@ export async function handleRecovery(request,env,ctx){try{
   await owner(request,env);const cursor=readAdminCursor(u.searchParams.get('cursor'));
   const where=cursor?' AND (b.created_ms,b.id)<(?,?)':'';
   const params=cursor?[config.profile.id,cursor[0],cursor[1]]:[config.profile.id];
-  const rows=await env.RECOVERY_DB.prepare(`SELECT b.*, (${recoveryMailFlagsSql}) AS mail_flags FROM recovery_bookings b WHERE b.owner_id=?${where} ORDER BY b.created_ms DESC,b.id DESC LIMIT 201`).bind(...params).all();
+  const rows=await env.RECOVERY_DB.prepare(`SELECT b.*, (${RESCHEDULE_JSON}) AS reschedule_json, (${recoveryMailFlagsSql}) AS mail_flags FROM recovery_bookings b WHERE b.owner_id=?${where} ORDER BY b.created_ms DESC,b.id DESC LIMIT 201`).bind(...params).all();
   const page=rows.results.slice(0,200);return json({bookings:page.map(r=>({...safeBooking(r,config,true),...readRecoveryMailFlags(r.mail_flags)})),profile:{name:config.profile.name,timezone:config.profile.timezone},next_cursor:rows.results.length>200?nextAdminCursor(page.at(-1)):null});
  }
  if(request.method==='POST'&&path==='notifications'){await owner(request,env);const input=await body(request);const row=await env.RECOVERY_DB.prepare("SELECT * FROM recovery_bookings WHERE id=? AND owner_id=? AND source='recovery'").bind(String(input.bookingId||''),config.profile.id).first();if(!row)fail(404,'Booking not found.');await reconcileRecoveryMail(env,row.id);if(row.status==='pending_approval')await pendingMail(env,row,config,await capability(env,row.id,row.request_id));else if(['confirmed','cancelled','declined'].includes(row.status))await statusMail(env,row,config);await deliver(env,row.id,ctx);return json({...await recoveryMailFlags(env,row.id)});}

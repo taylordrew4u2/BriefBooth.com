@@ -13,7 +13,7 @@ function expected(kind) {
 }
 
 const CURRENT = `(CASE WHEN substr(e.kind, 1, 8) = 'request_' THEN 'pending_approval'
-  ELSE substr(e.kind, 1, instr(e.kind, '_') - 1) END) = b.status`;
+  ELSE substr(e.kind, 1, instr(e.kind, '_') - 1) END) = b.status AND e.booking_version=b.notification_version`;
 
 export const recoveryMailFlagsSql = `SELECT json_object(
   'email_pending', count(*),
@@ -68,15 +68,15 @@ export async function deliverRecoveryEmails(env, bookingId, ctx, onlyEmailId = n
     const claim = await db.prepare(`UPDATE recovery_emails
       SET state='sending', delivery_status='unknown', attempt_count=attempt_count+1, send_started_ms=?
       WHERE id=? AND state='queued' AND next_attempt_ms<=? AND attempt_count<?
-        AND EXISTS(SELECT 1 FROM recovery_bookings WHERE id=recovery_emails.booking_id AND status=?)
+        AND EXISTS(SELECT 1 FROM recovery_bookings WHERE id=recovery_emails.booking_id AND status=? AND notification_version=recovery_emails.booking_version AND NOT EXISTS(SELECT 1 FROM recovery_reschedule_operations r WHERE r.booking_id=recovery_bookings.id AND r.state='applying'))
       RETURNING attempt_count`).bind(now, row.id, now, MAX_ATTEMPTS, expected(row.kind)).first();
     if (!claim) continue;
     const number = claim.attempt_count;
     await db.prepare(`INSERT INTO recovery_email_attempts(id,email_id,attempt_number,started_ms) VALUES(?,?,?,?)`)
       .bind(attempt, row.id, number, now).run();
     // A cancellation might have committed between claiming and writing the attempt.
-    const current = await db.prepare(`SELECT 1 FROM recovery_bookings WHERE id=? AND status=?`)
-      .bind(bookingId, expected(row.kind)).first();
+    const current = await db.prepare(`SELECT 1 FROM recovery_bookings WHERE id=? AND status=? AND notification_version=? AND NOT EXISTS(SELECT 1 FROM recovery_reschedule_operations r WHERE r.booking_id=recovery_bookings.id AND r.state='applying')`)
+      .bind(bookingId, expected(row.kind), row.booking_version).first();
     if (!current) {
       await finishAttempt(env, row, attempt, number, 'superseded', 'superseded', 'unknown');
       continue;
@@ -138,7 +138,7 @@ async function applyRecoveryMailEvent(env, attempt, details) {
     db.prepare("UPDATE recovery_email_attempts SET outcome='failed' WHERE id=? AND outcome='accepted'").bind(attempt.id),
     db.prepare(`UPDATE recovery_emails SET state=?, delivery_status=?, next_attempt_ms=0, last_error=?
       WHERE id=? AND attempt_count=? AND state='sent' AND delivery_status='accepted'
-        AND EXISTS(SELECT 1 FROM recovery_bookings WHERE id=recovery_emails.booking_id AND status=?)
+        AND EXISTS(SELECT 1 FROM recovery_bookings WHERE id=recovery_emails.booking_id AND status=? AND notification_version=recovery_emails.booking_version AND NOT EXISTS(SELECT 1 FROM recovery_reschedule_operations r WHERE r.booking_id=recovery_bookings.id AND r.state='applying'))
         AND EXISTS(SELECT 1 FROM recovery_email_attempts WHERE id=? AND outcome='failed')`)
       .bind(retryable ? 'queued' : 'sent', retryable ? 'unknown' : 'failed', spamCopBounce ? 'brevo_spamcop_551' : 'brevo_' + event,
         attempt.email_id, attempt.attempt_number, expected(attempt.kind), attempt.id),

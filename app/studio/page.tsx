@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { db, configured, Profile, Service } from "@/lib/supabase";
+import { RecoveryStudio } from "@/components/recovery-account-links";
 type Hours = {
   weekday: number;
   start_time: string;
@@ -52,6 +53,9 @@ const dayNames = [
   "Saturday",
 ];
 export default function Studio() {
+  return process.env.NEXT_PUBLIC_BOOKING_RECOVERY === "1" ? <RecoveryStudio /> : <LegacyStudio />;
+}
+function LegacyStudio() {
   const router = useRouter();
   const [uid, setUid] = useState("");
   const [siteOrigin, setSiteOrigin] = useState("");
