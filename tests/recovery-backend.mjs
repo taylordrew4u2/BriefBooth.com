@@ -42,11 +42,11 @@ const day=new Date(Date.now()+3*86400000).toISOString().slice(0,10);
 const input=(time='10:00',id=crypto.randomUUID())=>({serviceId:'service',startsAt:new Date(recoveryTest.localInstant(day,time,config.profile.timezone)).toISOString(),name:'Test Client',email:'client@example.com',notes:'Dummy only',answers:{need:'Website'},requestId:id});
 try{
  const savedOwnerHash=env.RECOVERY_OWNER_TOKEN_SHA256;delete env.RECOVERY_OWNER_TOKEN_SHA256;assert.equal((await request('config')).status,503);env.RECOVERY_OWNER_TOKEN_SHA256=savedOwnerHash;
- const c=await request('config');assert.equal(c.status,200);assert.equal(c.body.profile.intake_questions.length,1);assert.ok(!JSON.stringify(c).includes('dummy-secret'));
+ const c=await request('config');assert.equal(c.status,200);assert.deepEqual(c.body.profile.intake_questions,[]);assert.ok(!JSON.stringify(c).includes('dummy-secret'));
  assert.equal((await request('book',{method:'POST',data:input(),origin:'https://attacker.example'})).status,403);
  assert.equal((await request('admin')).status,401);
  assert.equal((await request('manage?token=forbidden-query-token')).status,404);
- const required=input();delete required.answers;assert.equal((await request('book',{method:'POST',data:required})).status,400);
+ const required=input();delete required.name;assert.equal((await request('book',{method:'POST',data:required})).status,400);
  const invalid=input();invalid.answers.need='Invalid';assert.equal((await request('book',{method:'POST',data:invalid})).status,400);
  malformedBusy=true;assert.equal((await request(`slots?service=service&day=${day}`)).status,503);malformedBusy=false;
  failCalendar=true;assert.equal((await request(`slots?service=service&day=${day}`)).status,503);failCalendar=false;
@@ -111,7 +111,7 @@ try{
  const meetReady=await request('review',{method:'POST',token:ownerToken,data:{bookingId:recoveredMeet.body.bookingId,approve:true}});assert.equal(meetReady.status,200);assert.equal(meetReady.body.booking.status,'confirmed');assert.equal(meetReady.body.booking.meeting_error,null);
  assert.equal((await request('cancel',{method:'POST',token:recoveredMeet.body.token,ip:'192.0.2.70'})).body.booking.status,'cancelled');assert.equal(events.size,0);
  // Email ambiguity is recorded and not blindly resent on booking retry.
- meetPending=false;mailTimeout=true;const later=input('16:00');later.email='later@example.com';const sent=await request('book',{method:'POST',data:later,ip:'192.0.2.3'});assert.equal(sent.status,201);assert.equal(sent.body.email_pending,true);assert.equal(sql.prepare("SELECT count(*) n FROM recovery_emails WHERE state='uncertain'").get().n,2);mailTimeout=false;
+ meetPending=false;mailTimeout=true;const later=input('16:00');later.email='later@example.com';delete later.answers;delete later.notes;const sent=await request('book',{method:'POST',data:later,ip:'192.0.2.3'});assert.equal(sent.status,201);assert.equal(sent.body.email_pending,true);assert.equal(sql.prepare("SELECT count(*) n FROM recovery_emails WHERE state='uncertain'").get().n,2);mailTimeout=false;
  const mailBefore=mail.length;await request('book',{method:'POST',data:later,ip:'192.0.2.3'});assert.equal(mail.length,mailBefore);
  const uncertainBefore=mail.length;const retryUncertain=await request('notifications',{method:'POST',token:ownerToken,data:{bookingId:sent.body.bookingId}});assert.equal(retryUncertain.body.email_uncertain,true);assert.equal(retryUncertain.body.email_queued,false);assert.equal(mail.length,uncertainBefore);
  const decline=await request('review',{method:'POST',token:ownerToken,data:{bookingId:sent.body.bookingId,approve:false}});assert.equal(decline.body.booking.status,'declined');assert.equal(events.size,0);
@@ -238,5 +238,38 @@ try{
  assert.deepEqual(allPaged.map(b=>b.id),expectedIds,'No omitted, duplicate or out-of-order records across timestamp ties');
  assert.ok(allPaged.some(b=>b.id===olderPendingId&&b.status==='pending_approval'));
  assert.ok(allPaged.every(b=>b.title!=='Other owner private request'));
+ // Owners can cancel a confirmed consultation without obtaining the client's
+ // private link. Use the same verified deletion and retry path as client cancel.
+ const ownerCancelInput={...input('10:00'),email:'owner-cancel@example.com',startsAt:new Date(Date.parse(input('10:00').startsAt)+2*86400000).toISOString()};
+ const ownerCancelRequest=await request('book',{method:'POST',data:ownerCancelInput,ip:'192.0.2.83'});
+ assert.equal(ownerCancelRequest.status,201);
+ const ownerReview=data=>request('review',{method:'POST',token:ownerToken,ip:'192.0.2.83',data});
+ assert.equal((await ownerReview({bookingId:ownerCancelRequest.body.bookingId,approve:true})).body.booking.status,'confirmed');
+ const cancelByOwner={bookingId:ownerCancelRequest.body.bookingId,approve:false};
+ assert.equal((await request('review',{method:'POST',data:cancelByOwner,ip:'192.0.2.83'})).status,401);
+ assert.equal((await request('review',{method:'POST',token:ownerCancelRequest.body.token,data:cancelByOwner,ip:'192.0.2.83'})).status,401);
+ assert.equal((await ownerReview({bookingId:'30000000-0000-4000-8000-000000000000',approve:false})).status,404);
+ sql.prepare('UPDATE recovery_bookings SET action_until=? WHERE id=?').run(Date.now()+60000,ownerCancelRequest.body.bookingId);
+ assert.equal((await ownerReview(cancelByOwner)).status,409);
+ sql.prepare('UPDATE recovery_bookings SET action_until=0 WHERE id=?').run(ownerCancelRequest.body.bookingId);
+ const ownerEventId='bb'+ownerCancelRequest.body.bookingId.replaceAll('-','');
+ assert.ok(events.has(ownerEventId));
+ const beforeOwnerCancellationMail=mail.length;
+ failDelete=true;
+ assert.equal((await ownerReview(cancelByOwner)).status,503);
+ assert.equal(sql.prepare('SELECT status FROM recovery_bookings WHERE id=?').get(ownerCancelRequest.body.bookingId).status,'cancelling');
+ assert.ok(events.has(ownerEventId));
+ assert.equal(mail.length,beforeOwnerCancellationMail,'A failed calendar deletion must not announce cancellation');
+ failDelete=false;
+ const ownerCancelled=await ownerReview(cancelByOwner);
+ assert.equal(ownerCancelled.status,200);
+ assert.equal(ownerCancelled.body.booking.status,'cancelled');
+ assert.equal(events.has(ownerEventId),false);
+ assert.equal(mail.length,beforeOwnerCancellationMail+2);
+ assert.ok(mail.slice(beforeOwnerCancellationMail).every(message=>message.subject.includes('cancelled')));
+ const deletesAfterOwnerCancel=calls.filter(call=>call.method==='DELETE').length;
+ assert.equal((await ownerReview(cancelByOwner)).status,200,'Repeating owner cancellation is safe');
+ assert.equal(calls.filter(call=>call.method==='DELETE').length,deletesAfterOwnerCancel);
+ assert.equal(mail.length,beforeOwnerCancellationMail+2);
  console.log('Recovery backend: auth, intake, fresh availability, buffer/overlap, concurrent reservation, idempotency, provider retries, action leases, cancellation, scoped email delivery and retries, DST, rate limits, and owner cursor pagination pass.');
 } finally {globalThis.fetch=realFetch;sql.close();}

@@ -6,11 +6,10 @@ import { Logo } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import type { IntakeQuestion } from "@/lib/intake";
 
 type Service = { id: string; title: string; description?: string; duration: number };
 type Config = {
-  profile: { name: string; headline?: string; bio?: string; timezone: string; intake_questions?: IntakeQuestion[] };
+  profile: { name: string; headline?: string; timezone: string };
   services: Service[];
   preferences?: { horizon_days?: number };
 };
@@ -132,13 +131,7 @@ export default function RecoveryBooking() {
     if (submitLock.current || !config || !slot) return;
     const data = new FormData(event.currentTarget);
     if (data.get("website")) return;
-    const answers: Record<string, string> = {};
-    for (const question of config.profile.intake_questions || []) {
-      const answer = data.getAll(`question-${question.id}`).map(String).map(s => s.trim()).filter(Boolean).join("\n");
-      if (question.required && !answer) { setError(`Please answer: ${question.label}`); return; }
-      answers[question.id] = answer;
-    }
-    const body = { serviceId, startsAt: slot, name: String(data.get("name") || "").trim(), email: String(data.get("email") || "").trim(), notes: String(data.get("notes") || "").trim(), answers };
+    const body = { serviceId, startsAt: slot, name: String(data.get("name") || "").trim(), email: String(data.get("email") || "").trim(), notes: String(data.get("notes") || "").trim() };
     const key = JSON.stringify(body);
     if (request.current?.key !== key) request.current = { key, id: crypto.randomUUID() };
     submitLock.current = true; setSubmitting(true); setError("");
@@ -159,9 +152,8 @@ export default function RecoveryBooking() {
         {checking ? <p role="status">Checking available times…</p> : slotsError ? <Notice text={slotsError} /> : day && <label className="block space-y-2"><span>Available time</span><select className={fieldClass} value={slot} onChange={e => setSlot(e.target.value)} required disabled={!slots.length}><option value="">{slots.length ? "Choose a time" : "No available times — choose another date"}</option>{slots.map(s => <option key={s} value={s}>{stamp(s, config.profile.timezone)}</option>)}</select></label>}
         {day && <Button type="button" variant="outline" disabled={checking} onClick={() => { setSlot(""); setSlotsRefresh(v => v + 1); }}>{slotsError ? "Try checking times again" : "Refresh available times"}</Button>}
       </fieldset>
-      <fieldset disabled={submitting} className="space-y-5"><legend className="mb-4 text-xl font-semibold">A little about you</legend><label className="block space-y-2"><span>Your name</span><Input name="name" autoComplete="name" maxLength={100} required /></label><label className="block space-y-2"><span>Email</span><Input name="email" type="email" autoComplete="email" maxLength={254} required /></label>
-        {(config.profile.intake_questions || []).map(q => <fieldset key={q.id} className="space-y-2"><legend className="mb-2 font-medium">{q.label}{!q.required && <span className="ml-1 text-sm font-normal text-muted-foreground">(optional)</span>}</legend>{q.type === "multiple" ? <div className="grid gap-2">{(q.options || []).map(option => <label key={option} className="intake-choice"><input style={{ minHeight: 24, flexShrink: 0, padding: 0 }} type="checkbox" name={`question-${q.id}`} value={option} /><span>{option}</span></label>)}</div> : q.type === "long" ? <Textarea name={`question-${q.id}`} aria-label={q.label} required={q.required} maxLength={1000} rows={3} /> : <Input name={`question-${q.id}`} aria-label={q.label} required={q.required} maxLength={500} />}</fieldset>)}
-        <label className="block space-y-2"><span>Anything else? <span className="text-sm text-muted-foreground">(optional)</span></span><Textarea name="notes" maxLength={2000} rows={3} placeholder="Please don’t include passwords or other private account details." /></label>
+      <fieldset disabled={submitting} className="space-y-5"><legend className="mb-4 text-xl font-semibold">Your details</legend><label className="block space-y-2"><span>Your name</span><Input name="name" autoComplete="name" maxLength={100} required /></label><label className="block space-y-2"><span>Email</span><Input name="email" type="email" autoComplete="email" maxLength={254} required /></label>
+        <div className="space-y-2"><label className="block" htmlFor="consultation-note">What would you like to talk about? <span className="text-sm text-muted-foreground">(optional)</span></label><Textarea id="consultation-note" name="notes" maxLength={2000} rows={3} aria-describedby="consultation-note-help" /><p id="consultation-note-help" className="text-sm text-muted-foreground">A sentence or two is plenty. We can talk through the details on the call.</p></div>
         <div hidden aria-hidden="true"><label>Website<Input name="website" autoComplete="off" tabIndex={-1} /></label></div>
       </fieldset>
       <p className="text-sm">No payment is required. 4u Digital will review your request before confirming the time.</p><Button type="submit" disabled={submitting || checking || !slot} size="lg">{submitting ? "Saving your request…" : "Request this time"}</Button>
@@ -314,7 +306,7 @@ export function RecoveryReview() {
         {["pending_approval", "confirming"].includes(booking.status) && <div className="flex flex-wrap gap-3">{(booking.status === "pending_approval" || booking.meeting_error !== "google_meet_failed") && <Button disabled={busy} onClick={() => review(booking.id, true)}>{booking.status === "confirming" ? "Retry Google Meet setup" : "Approve & create Google Meet"}</Button>}<Button disabled={busy} variant="outline" onClick={() => setDeclineId(booking.id)}>{booking.status === "pending_approval" ? "Decline" : "Cancel request"}</Button></div>}
         {booking.status === "cancelling" && <><p className="text-sm">Cancellation is not complete yet. Retry to finish checking and removing the calendar event.</p><Button disabled={busy} variant="outline" onClick={() => review(booking.id, false)}>Retry cancellation</Button></>}
         {declineId === booking.id && <div className="space-y-3 rounded-xl bg-secondary p-4"><p>{booking.status === "pending_approval" ? "Decline this request?" : "Cancel this request and remove any Google Calendar event?"}</p><div className="flex flex-wrap gap-3"><Button disabled={busy} onClick={() => review(booking.id, false)}>{booking.status === "pending_approval" ? "Yes, decline" : "Yes, cancel request"}</Button><Button disabled={busy} variant="outline" onClick={() => setDeclineId(null)}>Keep request</Button></div></div>}
-        {booking.status === "confirmed" && safeMeet(booking) && <a className="inline-block underline underline-offset-4" href={safeMeet(booking)!} target="_blank" rel="noopener noreferrer">Open Google Meet</a>}
+        {booking.status === "confirmed" && <div className="flex flex-wrap items-center gap-3">{safeMeet(booking) && <a className="inline-block underline underline-offset-4" href={safeMeet(booking)!} target="_blank" rel="noopener noreferrer">Open Google Meet</a>}<Button disabled={busy} variant="outline" onClick={() => setDeclineId(booking.id)}>Cancel booking</Button></div>}
       </>}
     </article>)}</div>
     {bookings.length > 0 && <p className="mt-5 text-sm" role="status">Showing {bookings.length} {bookings.length === 1 ? "request" : "requests"}{nextCursor ? ". More requests are available." : "."}</p>}

@@ -68,7 +68,8 @@ function validation(config,input){
  if(email.length>254||!/^\S+@[^\s@]+\.[^\s@]+$/.test(email)||/[\r\n]/.test(email))fail(400,'Enter a valid email address.');
  if(notes.length>4000)fail(400,'Keep additional notes under 4,000 characters.');
  const answers=input.answers||{};if(typeof answers!=='object'||Array.isArray(answers))fail(400,'Check your consultation answers.');let details=notes;
- for(const q of config.profile.intake_questions||[]){const answer=typeof answers[q.id]==='string'?answers[q.id].trim():'';if(q.required&&!answer)fail(400,'Please answer: '+q.label);if(answer.length>2000)fail(400,'One of your answers is too long.');if(q.type==='multiple'&&answer&&(!Array.isArray(q.options)||answer.split('\n').some(choice=>!q.options.includes(choice.trim()))||new Set(answer.split('\n').map(choice=>choice.trim())).size!==answer.split('\n').length))fail(400,'Choose an available answer for: '+q.label);if(answer)details+=`${details?'\n\n':''}${q.label}\n${answer}`;}
+ // Keep processing answers from older open forms so retries keep the same request fingerprint.
+ for(const q of config.profile.intake_questions||[]){const answer=typeof answers[q.id]==='string'?answers[q.id].trim():'';if(answer.length>2000)fail(400,'One of your answers is too long.');if(q.type==='multiple'&&answer&&(!Array.isArray(q.options)||answer.split('\n').some(choice=>!q.options.includes(choice.trim()))||new Set(answer.split('\n').map(choice=>choice.trim())).size!==answer.split('\n').length))fail(400,'Choose an available answer for: '+q.label);if(answer)details+=`${details?'\n\n':''}${q.label}\n${answer}`;}
  if(details.length>12000)fail(400,'Please shorten your consultation answers.');
  if(typeof input.requestId!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.requestId))fail(400,'Refresh the page and try again.');
  const starts=Date.parse(input.startsAt);if(!Number.isFinite(starts)||starts%MINUTE!==0)fail(400,'Choose an available appointment time.');return {name,email,notes:details,requestId:input.requestId.toLowerCase(),starts};
@@ -153,7 +154,7 @@ export async function handleRecovery(request,env,ctx){try{
  const path=u.pathname.slice('/api/recovery/'.length).replace(/\/$/,'');
  if(request.method==='POST'&&request.headers.get('origin')!==allowed)fail(403,'This request must come from BriefBooth.');
  const config=configuration(env);
- if(request.method==='GET'&&path==='config')return json({profile:config.profile,services:config.services,preferences:config.preferences});
+ if(request.method==='GET'&&path==='config')return json({profile:{...config.profile,intake_questions:[]},services:config.services.map(item=>({...item,description:'Bring an idea, a problem to solve, or just your questions.'})),preferences:config.preferences});
  if(request.method==='GET'&&path==='slots'){await rate(request,env,'slots',90,MINUTE);return json({slots:await slots(env,config,service(config,u.searchParams.get('service')),u.searchParams.get('day')||'')});}
  if(request.method==='POST'&&path==='book')return await book(request,env,config,await body(request),ctx);
  if(request.method==='GET'&&path==='manage'){await rate(request,env,'manage',90,MINUTE);const row=await managed(request,env);const {retries}=await reconcileRecoveryMail(env,row.id);if(retries.length)scheduleRecoveryMailChecks(env,row.id,ctx,retries);return json({booking:safeBooking(row,config),...await recoveryMailFlags(env,row.id,true)});}
