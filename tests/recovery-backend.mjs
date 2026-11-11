@@ -2,17 +2,30 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {handleRecovery,recoveryTest} from '../scripts/recovery-backend.mjs';
+import {reconcileRecoveryMail, deliverRecoveryEmails} from '../scripts/recovery-email.mjs';
 const sql=new DatabaseSync(':memory:');sql.exec(readFileSync(new URL('../recovery/schema.sql',import.meta.url),'utf8'));
-const DB={prepare(query){return {bind(...args){return {async first(){return sql.prepare(query).get(...args)||null;},async all(){return {results:sql.prepare(query).all(...args)};},async run(){const result=sql.prepare(query).run(...args);return {meta:{changes:result.changes}};}};}};}};
+const DB={
+ prepare(query){return {bind(...args){
+  const run=()=>({meta:{changes:sql.prepare(query).run(...args).changes}});
+  return {run,async first(){return sql.prepare(query).get(...args)||null;},async all(){return {results:sql.prepare(query).all(...args)};}};
+ }};},
+ async batch(statements){
+  sql.exec('BEGIN');
+  try {const result=statements.map(statement=>statement.run());sql.exec('COMMIT');return result;}
+  catch(error){sql.exec('ROLLBACK');throw error;}
+ },
+};
 const config={profile:{id:'owner',slug:'4u-digital',name:'4u Digital',timezone:'America/New_York',booking_mode:'approval',intake_questions:[{id:'need',label:'What do you need?',type:'multiple',required:true,options:['Website','App']}]},services:[{id:'service',title:'Free consultation',duration:30,active:true,amount_cents:0,meeting_modes:['google_meet']}],availability:Array.from({length:7},(_,weekday)=>({weekday,start_time:'09:00',end_time:'20:00'})),preferences:{notice_hours:1,buffer_minutes:60,horizon_days:60}};
 const ownerToken='test-owner-secret-token-that-is-at-least-32-chars';
 const env={RECOVERY_DB:DB,RECOVERY_CONFIG_JSON:JSON.stringify(config),RECOVERY_CAPABILITY_SECRET:'test-only-capability-secret-that-is-32-characters',RECOVERY_OWNER_TOKEN_SHA256:await recoveryTest.digest(ownerToken),RECOVERY_OWNER_EMAIL:'owner@example.com',GOOGLE_CLIENT_ID:'dummy-client',GOOGLE_CLIENT_SECRET:'dummy-secret',GOOGLE_REFRESH_TOKEN:'dummy-refresh',BREVO_API_KEY:'dummy-mail'};
+const brevoEvents=new Map();
 let calendarBusy=[],mail=[],events=new Map(),calls=[],meetPending=false,failCalendar=false,failCreate=false,failDelete=false,mailTimeout=false,mailRejected=false,malformedBusy=false,lateCreate=false,pendingRemoteEvent,rejectCreate=0,failConference=false;
 const realFetch=globalThis.fetch;
 globalThis.fetch=async(url,opts={})=>{
  const u=String(url);calls.push({url:u,method:opts.method||'GET'});
  if(u==='https://oauth2.googleapis.com/token')return Response.json({access_token:'dummy-access',expires_in:3600});
- if(u==='https://api.brevo.com/v3/smtp/email'){if(mailTimeout)throw new Error('timeout after possible delivery');if(mailRejected)return new Response('',{status:429});mail.push(JSON.parse(opts.body));return Response.json({messageId:'dummy'});}
+ if(u==='https://api.brevo.com/v3/smtp/email'){if(mailTimeout)throw new Error('timeout after possible delivery');if(mailRejected)return new Response('',{status:429});mail.push(JSON.parse(opts.body));return Response.json({messageId:'<mail-'+mail.length+'@test.invalid>'},{status:201});}
+ if(u.startsWith('https://api.brevo.com/v3/smtp/statistics/events?'))return Response.json({events:brevoEvents.get(new URL(u).searchParams.get('messageId'))||[]});
  if(u.includes('www.googleapis.com/calendar/v3/')){
   if(failCalendar)return new Response('',{status:503});
   if(u.endsWith('/freeBusy'))return Response.json(malformedBusy?{calendars:{primary:{errors:[{reason:'forbidden'}]}}}:{calendars:{primary:{busy:calendarBusy}}});
@@ -24,7 +37,7 @@ globalThis.fetch=async(url,opts={})=>{
  }
  throw new Error('Unexpected external request');
 };
-const request=async(path,{method='GET',data,token,origin='https://briefbooth.com',ip='192.0.2.1'}={})=>{const headers={'cf-connecting-ip':ip};if(token)headers.Authorization='Bearer '+token;if(method==='POST'){headers.Origin=origin;if(data!==undefined)headers['Content-Type']='application/json';}const r=await handleRecovery(new Request('https://briefbooth.com/api/recovery/'+path,{method,headers,body:data===undefined?undefined:JSON.stringify(data)}),env);return {status:r.status,body:await r.json()};};
+const request=async(path,{method='GET',data,token,origin='https://briefbooth.com',ip='192.0.2.1',ctx}={})=>{const headers={'cf-connecting-ip':ip};if(token)headers.Authorization='Bearer '+token;if(method==='POST'){if(origin)headers.Origin=origin;if(data!==undefined)headers['Content-Type']='application/json';}const r=await handleRecovery(new Request('https://briefbooth.com/api/recovery/'+path,{method,headers,body:data===undefined?undefined:JSON.stringify(data)}),env,ctx);return {status:r.status,body:await r.json()};};
 const day=new Date(Date.now()+3*86400000).toISOString().slice(0,10);
 const input=(time='10:00',id=crypto.randomUUID())=>({serviceId:'service',startsAt:new Date(recoveryTest.localInstant(day,time,config.profile.timezone)).toISOString(),name:'Test Client',email:'client@example.com',notes:'Dummy only',answers:{need:'Website'},requestId:id});
 try{
@@ -116,12 +129,96 @@ try{
  sql.prepare("UPDATE recovery_bookings SET status='cancelled' WHERE id=?").run(queued.body.bookingId);
  mailRejected=false;const beforeFinal=mail.length;const recovered=await request('cancel',{method:'POST',token:queued.body.token,ip:'192.0.2.44'});assert.equal(recovered.status,200);assert.equal(mail.length,beforeFinal+2);assert.ok(mail.slice(beforeFinal).every(m=>m.subject.includes('cancelled')));
  assert.equal(sql.prepare("SELECT count(*) n FROM recovery_emails WHERE booking_id=? AND kind LIKE 'request_%' AND state='superseded'").get(queued.body.bookingId).n,2);
- const adminMail=await request('admin',{token:ownerToken});const queuedRow=adminMail.body.bookings.find(x=>x.id===queued.body.bookingId);assert.equal(queuedRow.email_pending,false);assert.equal(queuedRow.email_uncertain,false);assert.equal(queuedRow.email_queued,false);
+ const adminMail=await request('admin',{token:ownerToken});const queuedRow=adminMail.body.bookings.find(x=>x.id===queued.body.bookingId);assert.equal(queuedRow.email_pending,true);assert.equal(queuedRow.email_uncertain,false);assert.equal(queuedRow.email_queued,false);
  assert.equal(recoveryTest.localInstant('2027-03-14','02:30','America/New_York'),null);
  const futureConfig={...config,overrides:[{day,enabled:false}]};assert.deepEqual(recoveryTest.schedule(futureConfig,config.services[0],day,Date.now()),[]);
  // Confirm throttling prevents arbitrary unlimited email booking attempts.
  for(let i=0;i<9;i++)await request('book',{method:'POST',data:{...input('18:00'),email:'blocked'+i+'@example.com'},ip:'192.0.2.99'});
  const limited=await request('book',{method:'POST',data:{...input('19:00'),email:'limit@example.com'},ip:'192.0.2.99'});assert.equal(limited.status,429);
+ // Delivery evidence is scoped to both provider ID and recipient. Pending is not delivered.
+ const deliveryInput={...input('11:00'),email:'delivery@example.com',startsAt:new Date(Date.parse(input('11:00').startsAt)+86400000).toISOString()};
+ const delivery=await request('book',{method:'POST',data:deliveryInput,ip:'192.0.2.80'});
+ assert.equal(delivery.status,201);
+ assert.equal(delivery.body.email_pending,true);
+ assert.equal(delivery.body.email_uncertain,false);
+ const mailRows=sql.prepare(`SELECT a.*, e.recipient, e.kind FROM recovery_email_attempts a
+   JOIN recovery_emails e ON e.id=a.email_id WHERE e.booking_id=? ORDER BY a.attempt_number`);
+ const findMail=kind=>mailRows.all(delivery.body.bookingId).filter(row=>row.kind===kind).at(-1);
+ const event=(row,name,reason='',email=row.recipient,messageId=row.provider_message_id)=>({messageId,email,event:name,reason});
+ const report=(row,...items)=>brevoEvents.set('<'+row.provider_message_id+'>',items);
+ const check=()=>reconcileRecoveryMail(env,delivery.body.bookingId,{polling:true});
+ const spamcop='551 Sending IP listed by SpamCop';
+ const ownerMail=findMail('request_owner'), clientMail=findMail('request_client');
+ assert.match(clientMail.provider_message_id,/^mail-\d+@test.invalid$/);
+ assert.ok(mail.some(item=>item.headers.idempotencyKey===clientMail.id&&item.tags.includes('briefbooth-recovery-'+clientMail.id)));
+ report(ownerMail,event(ownerMail,'delivered','', 'unrelated@example.com'),event(ownerMail,'delivered','','owner@example.com','foreign-id'));
+ report(clientMail,event(clientMail,'deferred',spamcop));
+ let checkResult=await check();
+ assert.deepEqual(checkResult.retries,[]);
+ assert.equal(findMail('request_owner').outcome,'accepted');
+ assert.equal(findMail('request_client').outcome,'accepted');
+ report(ownerMail,event(ownerMail,'softBounces',spamcop),event(ownerMail,'opened'));
+ await check();
+ assert.equal(findMail('request_owner').outcome,'delivered','Delivery evidence beats out-of-order terminal events');
+ report(ownerMail,event(ownerMail,'softBounces',spamcop));
+ assert.deepEqual((await check()).retries,[]);
+ for(let n=1;n<=4;n++){
+   const current=findMail('request_client');
+   assert.equal(current.attempt_number,n);
+   report(current,event(current,'softBounces',spamcop));
+   const [first,duplicate]=await Promise.all([check(),check()]);
+   assert.equal(first.retries.length+duplicate.retries.length,n<4?1:0);
+   if(n<4){
+     const before=mail.length;
+     await Promise.all([deliverRecoveryEmails(env,delivery.body.bookingId),deliverRecoveryEmails(env,delivery.body.bookingId)]);
+     assert.equal(mail.length,before+1,'Concurrent retry sends at most once');
+     assert.notEqual(findMail('request_client').id,current.id);
+   }
+ }
+ const failed=await request('notifications',{method:'POST',token:ownerToken,ip:'192.0.2.80',data:{bookingId:delivery.body.bookingId}});
+ assert.equal(failed.body.email_failed,true);
+ assert.equal(failed.body.email_queued,false);
+ assert.equal(mailRows.all(delivery.body.bookingId).filter(r=>r.kind==='request_client').length,4);
+ const deliveryCancelled=await request('cancel',{method:'POST',token:delivery.body.token,ip:'192.0.2.80'});
+ assert.equal(deliveryCancelled.status,200);
+ assert.equal(deliveryCancelled.body.email_failed,false,'Old-stage delivery errors do not follow a cancellation');
+ const cancelledClient=findMail('cancelled_client'), cancelledOwner=findMail('cancelled_owner');
+ report(cancelledClient,event(cancelledClient,'hardBounces',spamcop));
+ report(cancelledOwner,event(cancelledOwner,'delivered'));
+ assert.deepEqual((await check()).retries,[],'A hard bounce is never retried');
+ assert.equal(findMail('cancelled_client').outcome,'failed');
+ assert.equal(findMail('cancelled_owner').outcome,'delivered');
+ assert.ok(calls.some(call=>new URL(call.url).searchParams.get('messageId')==='<'+cancelledClient.provider_message_id+'>'));
+ // A request canceled after a retry is queued must never receive that stale retry.
+ const staleInput={...deliveryInput,email:'stale@example.com',startsAt:new Date(Date.parse(deliveryInput.startsAt)+7200000).toISOString(),requestId:crypto.randomUUID()};
+ const stale=await request('book',{method:'POST',data:staleInput,ip:'192.0.2.81'});
+ assert.equal(stale.status,201);
+ const staleClient=mailRows.all(stale.body.bookingId).find(row=>row.kind==='request_client');
+ report(staleClient,event(staleClient,'softBounces',spamcop));
+ assert.deepEqual((await reconcileRecoveryMail(env,stale.body.bookingId,{polling:true})).retries,[staleClient.email_id]);
+ await request('cancel',{method:'POST',token:stale.body.token,ip:'192.0.2.81'});
+ const beforeStale=mail.length;
+ await deliverRecoveryEmails(env,stale.body.bookingId,null,staleClient.email_id);
+ assert.equal(mail.length,beforeStale);
+ // Legacy accepted rows do not have an ID, so remain unknown and are not resent.
+ sql.prepare("DELETE FROM recovery_email_attempts WHERE email_id=?").run(cancelledClient.email_id);
+ sql.prepare("UPDATE recovery_emails SET delivery_status='unknown', attempt_count=0 WHERE id=?").run(cancelledClient.email_id);
+ const beforeLegacy=mail.length;
+ const legacy=await request('notifications',{method:'POST',token:ownerToken,ip:'192.0.2.80',data:{bookingId:delivery.body.bookingId}});
+ assert.equal(legacy.body.email_uncertain,true);
+ assert.equal(mail.length,beforeLegacy);
+ // The deployed gateway's request context runs an exact delivery check after returning.
+ const background=[];
+ const pollInput={...deliveryInput,email:'poll@example.com',startsAt:new Date(Date.parse(deliveryInput.startsAt)+14400000).toISOString(),requestId:crypto.randomUUID()};
+ const polled=await request('book',{method:'POST',data:pollInput,ip:'192.0.2.82',ctx:{waitUntil(task){background.push(task);}}});
+ assert.equal(polled.status,201);
+ assert.equal(polled.body.email_pending,true);
+ assert.equal(background.length,1);
+ for(const row of mailRows.all(polled.body.bookingId))report(row,event(row,'delivered'));
+ await Promise.all(background);
+ const pollStatus=await request('manage',{token:polled.body.token,ip:'192.0.2.82'});
+ assert.equal(pollStatus.body.email_pending,false);
+ assert.equal(mailRows.all(polled.body.bookingId).filter(row=>row.outcome==='delivered').length,2);
  // Cursor pagination keeps older actionable requests reachable beyond200 rows,
  // including timestamp ties, without crossing the configured owner's boundary.
  const pagedInsert=sql.prepare('INSERT INTO recovery_bookings(id,owner_id,service_id,title,starts_ms,ends_ms,client_name,client_email,status,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?)');
@@ -141,5 +238,5 @@ try{
  assert.deepEqual(allPaged.map(b=>b.id),expectedIds,'No omitted, duplicate or out-of-order records across timestamp ties');
  assert.ok(allPaged.some(b=>b.id===olderPendingId&&b.status==='pending_approval'));
  assert.ok(allPaged.every(b=>b.title!=='Other owner private request'));
- console.log('Recovery backend: auth, intake, fresh availability, buffer/overlap, concurrent reservation, idempotency, provider retries, action leases, cancellation, email ambiguity, DST, rate limits, and owner cursor pagination pass.');
+ console.log('Recovery backend: auth, intake, fresh availability, buffer/overlap, concurrent reservation, idempotency, provider retries, action leases, cancellation, scoped email delivery and retries, DST, rate limits, and owner cursor pagination pass.');
 } finally {globalThis.fetch=realFetch;sql.close();}

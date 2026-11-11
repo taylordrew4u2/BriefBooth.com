@@ -33,7 +33,14 @@ type Booking = {
   email_pending?: boolean;
   email_uncertain?: boolean;
   email_queued?: boolean;
+  email_failed?: boolean;
 };
+type EmailStatus = Pick<Booking, "email_pending" | "email_uncertain" | "email_queued" | "email_failed">;
+function clientEmailStatus(value: EmailStatus) {
+  if (value.email_failed) return "The email notification could not be delivered.";
+  if (value.email_uncertain) return "Email delivery could not be verified. Check your inbox and spam folder.";
+  return "The email notification is still pending.";
+}
 type ReviewPage = { bookings: Booking[]; next_cursor: string | null };
 const fieldClass = "w-full rounded-xl border border-border bg-white px-4 py-3";
 const statusLabels: Record<string, string> = {
@@ -98,7 +105,7 @@ export default function RecoveryBooking() {
   const [slotsError, setSlotsError] = useState("");
   const [slotsRefresh, setSlotsRefresh] = useState(0);
   const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState<{ token: string; status: string; email_pending?: boolean; email_uncertain?: boolean } | null>(null);
+  const [result, setResult] = useState<({ token: string; status: string } & EmailStatus) | null>(null);
   const submitLock = useRef(false);
   const request = useRef<{ key: string; id: string } | null>(null);
   const [reload, setReload] = useState(0);
@@ -141,7 +148,7 @@ export default function RecoveryBooking() {
   }
   const service = config?.services.find(s => s.id === serviceId);
   const dates = config ? dateBounds(config.profile.timezone, config.preferences?.horizon_days) : undefined;
-  if (result) return <Frame title="Your request is saved"><div className="space-y-5 rounded-2xl border border-border p-6"><p className="text-lg font-semibold">{statusLabels[result.status] || "Check your booking status"}</p><p>{stamp(slot, config?.profile.timezone)}</p><p>{result.status === "pending_approval" ? "This time is requested, not confirmed yet. Once approved, your booking page will show your Google Meet link." : "Open your private booking page to see the current status and any Google Meet link."}</p>{result.email_pending && <p role="status" className="rounded-xl bg-secondary p-4 text-sm">{result.email_uncertain ? "Email delivery could not be confirmed. Check your inbox before requesting another message." : "Email notification is still pending."} Your request is saved. Keep the private booking link below and use it to check your status.</p>}<Button asChild><a href={`/booking-status/#token=${encodeURIComponent(result.token)}`}>View your booking</a></Button><p className="text-sm">Save the private booking link. It lets you check the status or cancel your request.</p></div></Frame>;
+  if (result) return <Frame title="Your request is saved"><div className="space-y-5 rounded-2xl border border-border p-6"><p className="text-lg font-semibold">{statusLabels[result.status] || "Check your booking status"}</p><p>{stamp(slot, config?.profile.timezone)}</p><p>{result.status === "pending_approval" ? "This time is requested, not confirmed yet. Once approved, your booking page will show your Google Meet link." : "Open your private booking page to see the current status and any Google Meet link."}</p>{result.email_pending && <p role="status" className="rounded-xl bg-secondary p-4 text-sm">{clientEmailStatus(result)} Your request is saved. Keep the private booking link below and use it to check your status.</p>}<Button asChild><a href={`/booking-status/#token=${encodeURIComponent(result.token)}`}>View your booking</a></Button><p className="text-sm">Save the private booking link. It lets you check the status or cancel your request.</p></div></Frame>;
   return <Frame title="Let’s talk about your project"><Notice text={error} />{loading ? <p role="status">Loading consultation details…</p> : !config ? <Button onClick={() => setReload(v => v + 1)}>Try again</Button> : !config.services.length ? <p>No consultations are available right now. Please contact 4u Digital to arrange a time.</p> : <>
     <div className="mb-7 space-y-3"><p>{config.profile.headline}</p><p>{service?.description || "Book a free first consultation with 4u Digital."}</p><div className="flex flex-wrap gap-2"><span className="rounded-full bg-secondary px-3 py-1 text-sm">Free</span><span className="rounded-full bg-secondary px-3 py-1 text-sm">{service?.duration || 30} minutes</span><span className="rounded-full bg-accent px-3 py-1 text-sm">Google Meet</span></div></div>
     <form onSubmit={submit} className="space-y-7 rounded-2xl border border-border p-5 sm:p-7" aria-busy={submitting}>
@@ -169,8 +176,7 @@ export function RecoveryStatus() {
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
-  const [emailPending, setEmailPending] = useState(false);
-  const [emailUncertain, setEmailUncertain] = useState(false);
+  const [emailStatus, setEmailStatus] = useState<EmailStatus>({});
   const lock = useRef(false);
   const [refresh, setRefresh] = useState(0);
   useEffect(() => {
@@ -186,7 +192,7 @@ export function RecoveryStatus() {
     if (!token) return;
     const controller = new AbortController();
     Promise.resolve().then(() => { setBusy(true); setError(""); });
-    api<Booking | { booking: Booking; email_pending?: boolean; email_uncertain?: boolean }>("manage", { token, signal: controller.signal }).then(value => { if (controller.signal.aborted) return; setBooking("booking" in value ? value.booking : value); setEmailPending("booking" in value && Boolean(value.email_pending)); setEmailUncertain("booking" in value && Boolean(value.email_uncertain)); })
+    api<Booking | ({ booking: Booking } & EmailStatus)>("manage", { token, signal: controller.signal }).then(value => { if (controller.signal.aborted) return; setBooking("booking" in value ? value.booking : value); setEmailStatus(value); })
       .catch(e => { if (!controller.signal.aborted) setError(message(e)); })
       .finally(() => { if (!controller.signal.aborted) setBusy(false); });
     return () => controller.abort();
@@ -195,9 +201,9 @@ export function RecoveryStatus() {
     if (lock.current || !token || activeToken.current !== token) return;
     lock.current = true; setBusy(true); setError("");
     try {
-      const response = await api<{ booking: Booking; email_pending?: boolean; email_uncertain?: boolean }>("cancel", { token, body: {} });
+      const response = await api<{ booking: Booking } & EmailStatus>("cancel", { token, body: {} });
       if (activeToken.current !== token) return;
-      setBooking(response.booking); setEmailPending(Boolean(response.email_pending)); setEmailUncertain(Boolean(response.email_uncertain)); setConfirmCancel(false);
+      setBooking(response.booking); setEmailStatus(response); setConfirmCancel(false);
     }
     catch (e) { if (activeToken.current === token) setError(message(e)); }
     finally { lock.current = false; if (activeToken.current === token) { setBusy(false); setConfirmCancel(false); setRefresh(v => v + 1); } }
@@ -205,7 +211,7 @@ export function RecoveryStatus() {
   const meeting = booking ? safeMeet(booking) : null;
   return <Frame title="Your booking"><Notice text={error} />{!ready || (busy && !booking) ? <p role="status">Loading your booking…</p> : !token ? <p>Open the private booking link you received after submitting your request.</p> : <>
     {booking && <div className="space-y-5 rounded-2xl border border-border p-6"><p className="inline-block rounded-full bg-accent px-3 py-1 text-sm font-medium">{bookingStatus(booking)}</p><h2 className="text-xl font-semibold">{booking.title || booking.service_title || "Consultation with 4u Digital"}</h2><p>{stamp(booking.starts_at, booking.timezone)}</p>
-      {emailPending && <p className="text-sm">{emailUncertain ? "Email delivery could not be confirmed. Check your inbox before requesting another message." : "An email notification is still pending."} Your saved booking status is shown here; keep this private link.</p>}
+      {emailStatus.email_pending && <p className="text-sm">{clientEmailStatus(emailStatus)} Your saved booking status is shown here; keep this private link.</p>}
       {booking.status === "pending_approval" && <p>Your time has been requested. Wait for approval before joining a call.</p>}
       {booking.status === "confirming" && <p>{booking.meeting_error === "google_meet_failed" ? "Google could not create the Meet link. Cancel this request and request another time. This appointment is not confirmed." : "Your consultant is preparing your Google Meet call. Refresh this page to check for the confirmation."}</p>}
       {booking.status === "confirmed" && (meeting ? <Button asChild><a href={meeting} target="_blank" rel="noopener noreferrer">Join Google Meet</a></Button> : <p>The Google Meet link is not available yet. Contact 4u Digital before your appointment.</p>)}
@@ -277,17 +283,24 @@ export function RecoveryReview() {
     } catch (e) { setError(message(e)); }
     finally { lock.current = false; setBusy(false); setLoadingMore(false); }
   }
+  function notificationStatus(value: EmailStatus) {
+    if (value.email_failed) return "Some email notifications could not be delivered. The booking is still saved.";
+    if (value.email_uncertain) return "Some deliveries could not be verified. Check your inbox before sending another message.";
+    if (value.email_queued) return "Some email notifications are queued to retry.";
+    if (value.email_pending) return "Waiting for the email service to confirm delivery.";
+    return "No outstanding email notifications for this booking status.";
+  }
   async function review(bookingId: string, approve: boolean) {
     if (lock.current) return;
     lock.current = true; setBusy(true); setError(""); setNotificationNotice("");
-    try { const response = await api<{ email_pending?: boolean; email_uncertain?: boolean }>("review", { token, body: { bookingId, approve } }); if (response.email_pending) setNotificationNotice(response.email_uncertain ? "The booking was updated, but email delivery could not be confirmed. Check your inbox before sending another message." : "The booking was updated. Email notifications are still pending; you can retry queued emails below."); setDeclineId(null); setRefresh(v => v + 1); }
+    try { const response = await api<EmailStatus>("review", { token, body: { bookingId, approve } }); if (response.email_pending) setNotificationNotice(notificationStatus(response)); setDeclineId(null); setRefresh(v => v + 1); }
     catch (e) { setError(message(e)); setRefresh(v => v + 1); }
     finally { lock.current = false; setBusy(false); }
   }
-  async function retryNotifications(bookingId: string) {
+  async function checkNotifications(bookingId: string) {
     if (lock.current) return;
     lock.current = true; setBusy(true); setError(""); setNotificationNotice("");
-    try { const response = await api<{ email_pending?: boolean; email_uncertain?: boolean }>("notifications", { token, body: { bookingId } }); setNotificationNotice(response.email_uncertain ? "Delivery could not be confirmed for some messages. Check your inbox before sending another message; those messages were not resent." : response.email_pending ? "Some emails are still queued. Please try again later." : "Queued notifications were accepted by the email service. Check your inbox for delivery."); setRefresh(v => v + 1); }
+    try { const response = await api<EmailStatus>("notifications", { token, body: { bookingId } }); setNotificationNotice(notificationStatus(response)); setRefresh(v => v + 1); }
     catch (e) { setError(message(e)); }
     finally { lock.current = false; setBusy(false); }
   }
@@ -296,7 +309,7 @@ export function RecoveryReview() {
     {busy && !loaded && <p role="status">Loading requests…</p>}{loaded && !bookings.length && <p>No booking requests yet.</p>}
     <div className="space-y-5">{bookings.map(booking => <article key={booking.id} className="space-y-3 rounded-2xl border border-border p-5"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-lg font-semibold">{booking.client_name || "Reserved time"}</h2><span className="rounded-full bg-accent px-3 py-1 text-sm">{bookingStatus(booking)}</span></div>{booking.client_email && <p className="break-all">{booking.client_email}</p>}<p>{booking.title || booking.service_title || "Consultation"} · {stamp(booking.starts_at, booking.timezone)}</p>{booking.notes && <details><summary className="cursor-pointer underline underline-offset-4">Project details</summary><p className="mt-3 whitespace-pre-wrap break-words text-sm">{booking.notes}</p></details>}
       {booking.source === "supabase" ? <p className="text-sm">Existing reservation. Manage this appointment through its original booking record.</p> : <>
-        {booking.email_pending && <div className="space-y-3 rounded-xl bg-secondary p-4"><p className="text-sm">{booking.email_uncertain ? "Delivery could not be confirmed for some messages. Check your inbox before sending another message." : "Email notifications are still queued."}</p>{(booking.email_queued ?? (booking.email_pending && !booking.email_uncertain)) && <Button variant="outline" disabled={busy} onClick={() => retryNotifications(booking.id)}>Retry queued emails</Button>}</div>}
+        {booking.email_pending && <div className="space-y-3 rounded-xl bg-secondary p-4"><p className="text-sm">{notificationStatus(booking)}</p><Button variant="outline" disabled={busy} onClick={() => checkNotifications(booking.id)}>{booking.email_queued ? "Retry queued emails" : "Check email delivery"}</Button></div>}
         {booking.status === "confirming" && booking.meeting_error === "google_meet_failed" && <p className="text-sm">Google could not create the Meet link. Cancel this request and ask the client to request another time.</p>}
         {["pending_approval", "confirming"].includes(booking.status) && <div className="flex flex-wrap gap-3">{(booking.status === "pending_approval" || booking.meeting_error !== "google_meet_failed") && <Button disabled={busy} onClick={() => review(booking.id, true)}>{booking.status === "confirming" ? "Retry Google Meet setup" : "Approve & create Google Meet"}</Button>}<Button disabled={busy} variant="outline" onClick={() => setDeclineId(booking.id)}>{booking.status === "pending_approval" ? "Decline" : "Cancel request"}</Button></div>}
         {booking.status === "cancelling" && <><p className="text-sm">Cancellation is not complete yet. Retry to finish checking and removing the calendar event.</p><Button disabled={busy} variant="outline" onClick={() => review(booking.id, false)}>Retry cancellation</Button></>}

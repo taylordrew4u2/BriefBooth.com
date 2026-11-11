@@ -41,6 +41,21 @@ CREATE TABLE IF NOT EXISTS recovery_emails (
  body TEXT NOT NULL,
  state TEXT NOT NULL DEFAULT 'queued' CHECK(state IN ('queued','sending','sent','uncertain','superseded')),
  created_ms INTEGER NOT NULL,
- sent_ms INTEGER
+ sent_ms INTEGER,
+ delivery_status TEXT NOT NULL DEFAULT 'unknown',
+ attempt_count INTEGER NOT NULL DEFAULT 0,
+ send_started_ms INTEGER NOT NULL DEFAULT 0,
+ next_attempt_ms INTEGER NOT NULL DEFAULT 0,
+ last_error TEXT
 );
 CREATE INDEX IF NOT EXISTS recovery_emails_booking_state ON recovery_emails(booking_id,state);
+CREATE TABLE IF NOT EXISTS recovery_email_attempts (
+ id TEXT PRIMARY KEY,
+ email_id TEXT NOT NULL REFERENCES recovery_emails(id),
+ attempt_number INTEGER NOT NULL,
+ started_ms INTEGER NOT NULL,
+ provider_message_id TEXT UNIQUE,
+ outcome TEXT NOT NULL DEFAULT 'sending',
+ last_checked_ms INTEGER NOT NULL DEFAULT 0,
+ UNIQUE(email_id,attempt_number)
+);
