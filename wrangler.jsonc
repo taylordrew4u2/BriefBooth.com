@@ -2,5 +2,12 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "briefbooth",
   "pages_build_output_dir": "./out",
-  "compatibility_date": "2026-10-15"
+  "compatibility_date": "2026-10-15",
+  "d1_databases": [
+    {
+      "binding": "RECOVERY_DB",
+      "database_name": "briefbooth-4u-digital-recovery",
+      "database_id": "1ea17d0a-a9c3-43d7-8b4c-aa1e9901514d"
+    }
+  ]
 }
