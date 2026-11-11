@@ -856,9 +856,21 @@ export default function Studio() {
                           </p>
                           <p>
                             <strong>{b.client_name}</strong> ·{" "}
-                            <a href={"mailto:" + b.client_email}>
-                              {b.client_email}
-                            </a>
+                            {savedProfile?.slug === "4u-digital" ? (
+                              <>
+                                <span>{b.client_email}</span>{" "}
+                                <button type="button" className="text-link" onClick={async () => {
+                                  try {
+                                    await navigator.clipboard.writeText(b.client_email);
+                                    setMessage("Client email copied. Paste it into a message from your 4u Digital inbox.");
+                                  } catch {
+                                    setMessage("Select and copy the client’s address, then use your 4u Digital inbox.");
+                                  }
+                                }}>Copy client email</button>
+                              </>
+                            ) : (
+                              <a href={"mailto:" + b.client_email}>{b.client_email}</a>
+                            )}
                           </p>
                           {profile.id === uid && <SendProjectPlanner ownerId={uid} bookingId={b.id} clientName={b.client_name} clientEmail={b.client_email} />}
                           <p>
