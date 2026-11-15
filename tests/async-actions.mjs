@@ -265,3 +265,56 @@ for(const failure of ['That time is no longer available','Google could not finis
   assert.equal(state.busy,false);assert.equal(context.lock.current,false);
 }
 console.log('PASS owner rescheduling: pending/confirmed mutation survives failed refresh, owner contact and email flags are preserved, rejection feedback survives successful refresh');
+
+// Run the real date input handler and availability effect with an in-flight
+// request. Native date inputs can expose an empty value or an intermediate year
+// while their visible month/day/year segments are still being edited.
+const rescheduleSource=ts.createSourceFile('components/recovery-client.tsx',fs.readFileSync('components/recovery-client.tsx','utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+const rescheduleComponent=rescheduleSource.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='RecoveryReschedule');
+const rescheduleEffect=rescheduleComponent.body.statements.find(node=>ts.isExpressionStatement(node)&&ts.isCallExpression(node.expression)&&node.expression.expression.getText(rescheduleSource)==='useEffect');
+const rescheduleEffectJs=ts.transpileModule(`const availabilityEffect=${rescheduleEffect.expression.arguments[0].getText(rescheduleSource)};`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+function startRescheduleAvailability(context) {
+  return vm.runInNewContext(`(() => { ${rescheduleEffectJs}; return availabilityEffect; })()`,context)();
+}
+let nativeDateInput;
+function findNativeDateInput(node) {
+  if(ts.isJsxSelfClosingElement(node)&&node.tagName.getText(rescheduleSource)==='Input'&&node.attributes.properties.some(attr=>ts.isJsxAttribute(attr)&&attr.name.text==='type'&&attr.initializer?.text==='date')) nativeDateInput=node;
+  ts.forEachChild(node,findNativeDateInput);
+}
+findNativeDateInput(rescheduleComponent);
+assert(nativeDateInput);
+const dateAttribute=name=>nativeDateInput.attributes.properties.find(attr=>ts.isJsxAttribute(attr)&&attr.name.text===name);
+assert.equal(dateAttribute('value'),undefined,'React must not overwrite incomplete native date segments with a controlled value');
+assert.equal(dateAttribute('defaultValue')?.initializer?.text,'','The native draft starts empty and remains uncontrolled');
+assert.equal(dateAttribute('onInput')?.initializer?.expression?.getText(rescheduleSource),'changeRescheduleDate','Partial edits must invalidate a selected slot before native change/blur');
+for(const invalid of [{value:'',valid:false},{value:'0002-11-16',valid:false},{value:'2027-11-16',valid:false}]) {
+  const requests=[];
+  const state={day:'2026-11-16',slots:['2026-11-16T15:00:00Z'],slot:'2026-11-16T15:00:00Z',loading:false,error:'old error',open:true};
+  const context={day:state.day,open:true,booking:{id:'test-booking',reschedule:null},token:'test-only-key',bounds:{min:'2026-11-10',max:'2027-01-09'},refresh:0,AbortController,encodeURIComponent,
+    operation:{current:{startsAt:state.slot,id:'old-operation'}},message:error=>error.message,
+    api:(path,options)=>new Promise((resolve,reject)=>requests.push({path,options,resolve,reject})),
+    setDay:value=>{state.day=value;context.day=value;},setSlots:value=>{state.slots=value;},setSlot:value=>{state.slot=value;},setLoading:value=>{state.loading=value;},setError:value=>{state.error=value;},setOpen:value=>{state.open=value;context.open=value;},
+  };
+  const previousCleanup=startRescheduleAvailability(context);await new Promise(setImmediate);
+  assert.equal(requests.length,1);assert.equal(state.loading,true);
+  state.slot='2026-11-16T15:00:00Z';
+  const input=Object.freeze({value:invalid.value,validity:Object.freeze({valid:invalid.valid})});
+  handler('components/recovery-client.tsx','changeRescheduleDate',context)({currentTarget:input});
+  previousCleanup();
+  const invalidCleanup=startRescheduleAvailability(context);await new Promise(setImmediate);
+  assert.equal(requests[0].options.signal.aborted,true,'Editing away from a valid date aborts its availability request');
+  assert.equal(requests.length,1,'Blank, partial-year and out-of-range dates never request availability');
+  assert.equal(state.day,'');assert.equal(state.slot,'');assert.equal(state.slots.length,0);assert.equal(state.loading,false);assert.equal(state.error,'');assert.equal(context.operation.current,null);
+  requests[0].resolve({slots:['stale-time']});await new Promise(setImmediate);
+  assert.equal(state.slots.length,0,'An old response cannot restore a slot after the date becomes incomplete');
+  assert.equal(state.loading,false);assert.equal(state.error,'');
+  invalidCleanup();
+  handler('components/recovery-client.tsx','changeRescheduleDate',context)({currentTarget:Object.freeze({value:'2026-11-17',validity:Object.freeze({valid:true})})});
+  const validCleanup=startRescheduleAvailability(context);await new Promise(setImmediate);
+  assert.equal(requests.length,2);assert.match(requests[1].path,/day=2026-11-17$/);assert.equal(state.loading,true);
+  requests[1].resolve({slots:['2026-11-17T15:00:00Z']});await new Promise(setImmediate);
+  assert.equal(state.slots[0],'2026-11-17T15:00:00Z');assert.equal(state.loading,false);
+  handler('components/recovery-client.tsx','closeReschedule',context)();validCleanup();
+  assert.equal(state.open,false);assert.equal(state.day,'');assert.equal(state.slots.length,0);assert.equal(state.slot,'');assert.equal(state.loading,false);assert.equal(state.error,'');
+}
+console.log('PASS native reschedule date: partial/out-of-range input cancels stale availability without fetching; completed dates recover; closing clears draft');

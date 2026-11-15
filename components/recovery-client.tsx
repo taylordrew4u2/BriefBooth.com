@@ -368,22 +368,32 @@ function RecoveryReschedule({ booking, token, busy, apply }: { booking: Booking;
   const timezone = booking.timezone || "America/New_York";
   const bounds = dateBounds(timezone);
   useEffect(() => {
-    if (!open || !day || booking.reschedule) return;
     const controller = new AbortController();
-    Promise.resolve().then(() => { if (!controller.signal.aborted) { setLoading(true); setSlots([]); setSlot(""); setError(""); } });
-    api<{ slots: string[] }>(`reschedule-slots?bookingId=${encodeURIComponent(booking.id)}&day=${encodeURIComponent(day)}`, { token, signal: controller.signal })
+    const canLoad = open && /^\d{4}-\d{2}-\d{2}$/.test(day) && day >= bounds.min && day <= bounds.max && !booking.reschedule;
+    Promise.resolve().then(() => { if (!controller.signal.aborted) { setLoading(Boolean(canLoad)); setSlots([]); setSlot(""); setError(""); } });
+    if (canLoad) api<{ slots: string[] }>(`reschedule-slots?bookingId=${encodeURIComponent(booking.id)}&day=${encodeURIComponent(day)}`, { token, signal: controller.signal })
       .then(value => { if (!controller.signal.aborted) setSlots(value.slots); })
       .catch(e => { if (!controller.signal.aborted) setError(message(e)); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [open, day, booking.id, booking.reschedule, token, refresh]);
+  }, [open, day, booking.id, booking.reschedule, token, refresh, bounds.min, bounds.max]);
+  function changeRescheduleDate(event: FormEvent<HTMLInputElement>) {
+    // Keep partial native date segments in the input; only complete, valid dates drive availability.
+    const input = event.currentTarget;
+    const nextDay = input.validity.valid && /^\d{4}-\d{2}-\d{2}$/.test(input.value) && input.value >= bounds.min && input.value <= bounds.max ? input.value : "";
+    if (nextDay === day) return;
+    setDay(nextDay); setSlots([]); setSlot(""); setLoading(Boolean(nextDay)); setError(""); operation.current = null;
+  }
+  function closeReschedule() {
+    setOpen(false); setDay(""); setSlots([]); setSlot(""); setLoading(false); setError(""); operation.current = null;
+  }
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (busy || loading || !slot) return;
     if (operation.current?.startsAt !== slot) operation.current = { startsAt: slot, id: crypto.randomUUID() };
-    if (await apply(slot, operation.current.id)) { setOpen(false); setDay(""); setSlot(""); operation.current = null; }
+    if (await apply(slot, operation.current.id)) closeReschedule();
   }
   if (booking.reschedule) return <div className="space-y-3 rounded-xl bg-secondary p-4"><p role="status">A change to {stamp(booking.reschedule.starts_at, timezone)} is being checked. The time above is the last confirmed time. Wait for the updated confirmation before joining.</p><Button disabled={busy} variant="outline" onClick={() => apply(booking.reschedule!.starts_at, booking.reschedule!.operation_id)}>Finish time change</Button></div>;
   if (!open) return <Button disabled={busy} variant="outline" onClick={() => setOpen(true)}>Change appointment time</Button>;
-  return <form onSubmit={submit} className="space-y-4 rounded-xl bg-secondary p-4"><h3 className="font-semibold">Change appointment time</h3><p className="text-sm">Choose a time agreed with the client. BriefBooth will update the existing Google Calendar event and send a new confirmation. The Google Meet link stays the same.</p><label className="block space-y-2"><span>New appointment date</span><Input type="date" value={day} min={bounds.min} max={bounds.max} disabled={busy} required onChange={e => { setDay(e.target.value); setSlot(""); operation.current = null; }} /></label><Notice text={error} />{loading ? <p role="status">Checking available times…</p> : day && !error && <label className="block space-y-2"><span>New appointment time</span><select className={fieldClass} value={slot} disabled={busy || !slots.length} required onChange={e => { setSlot(e.target.value); operation.current = null; }}><option value="">{slots.length ? "Choose a time" : "No available times — choose another date"}</option>{slots.map(value => <option key={value} value={value}>{stamp(value, timezone)}</option>)}</select></label>}<div className="flex flex-wrap gap-3"><Button type="submit" disabled={busy || loading || !slot}>Confirm new time</Button>{error && <Button type="button" variant="outline" disabled={busy || loading} onClick={() => setRefresh(v => v + 1)}>Check times again</Button>}<Button type="button" variant="ghost" disabled={busy} onClick={() => setOpen(false)}>Keep current time</Button></div></form>;
+  return <form onSubmit={submit} className="space-y-4 rounded-xl bg-secondary p-4"><h3 className="font-semibold">Change appointment time</h3><p className="text-sm">Choose a time agreed with the client. BriefBooth will update the existing Google Calendar event and send a new confirmation. The Google Meet link stays the same.</p><label className="block space-y-2"><span>New appointment date</span><Input type="date" defaultValue="" min={bounds.min} max={bounds.max} disabled={busy} required onInput={changeRescheduleDate} /></label><Notice text={error} />{loading ? <p role="status">Checking available times…</p> : day && !error && <label className="block space-y-2"><span>New appointment time</span><select className={fieldClass} value={slot} disabled={busy || !slots.length} required onChange={e => { setSlot(e.target.value); operation.current = null; }}><option value="">{slots.length ? "Choose a time" : "No available times — choose another date"}</option>{slots.map(value => <option key={value} value={value}>{stamp(value, timezone)}</option>)}</select></label>}<div className="flex flex-wrap gap-3"><Button type="submit" disabled={busy || loading || !slot}>Confirm new time</Button>{error && <Button type="button" variant="outline" disabled={busy || loading} onClick={() => setRefresh(v => v + 1)}>Check times again</Button>}<Button type="button" variant="ghost" disabled={busy} onClick={closeReschedule}>Keep current time</Button></div></form>;
 }
