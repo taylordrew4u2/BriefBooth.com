@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import {accountDestination} from '../lib/account-routing.ts';
 
 // Execute the real event-handler functions with rejected/resolved backend calls.
 // No browser credentials, production writes, or provider calls are involved.
@@ -21,7 +22,7 @@ function handler(file, name, context) {
   const js=ts.transpileModule(definition,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
   return vm.runInNewContext(`${js.replace(/^export /gm, "")}; ${name}`,context);
 }
-const cases=[['components/manage-client.tsx','cancel'],['app/studio/page.tsx','addService'],['app/studio/page.tsx','saveHours'],['app/account/page.tsx','savePassword']];
+const cases=[['components/manage-client.tsx','cancel'],['app/studio/page.tsx','addService'],['app/studio/page.tsx','saveHours'],['components/account-access.tsx','savePassword']];
 for(const [file,name] of cases) {
   for(const reject of [true,false]) {
     const busy=[],messages=[],bookings=[],routes=[];
@@ -36,7 +37,7 @@ for(const [file,name] of cases) {
       hours:[{enabled:true,weekday:1,start_time:'09:00',end_time:'17:00'}],
       router:{push:path=>routes.push(path),replace:path=>routes.push(path)},
       localStorage:{getItem:()=>null,removeItem:()=>{}},
-      URLSearchParams,window:{location:{search:''}},
+      accountDestination,process:{env:{}},URLSearchParams,window:{location:{search:''}},
       FormData:class {get(key){return {password:'test-only-placeholder',title:'Consultation',description:'Test',duration:'30',meeting_modes:'zoom'}[key];}},
     };
     if(name==='savePassword') context.routeAccount=handler(file,'routeAccount',context);
@@ -64,12 +65,12 @@ for(const outcome of ['consultant','client','client-intent','role-error','role-r
     }}),
     setBusy:value=>busy.push(value),setMessage:value=>messages.push(value),
     router:{replace:path=>routes.push(path)},
-    URLSearchParams,window:{location:{search:''}},
+    accountDestination,process:{env:{}},URLSearchParams,window:{location:{search:''}},
     localStorage:{getItem:key=>key==='briefbooth_client_login' && outcome==='client-intent'?String(Date.now()):null,removeItem:key=>storageRemovals.push(key)},
     FormData:class {get(){return 'test-only-placeholder';}},
   };
-  context.routeAccount=handler('app/account/page.tsx','routeAccount',context);
-  await handler('app/account/page.tsx','savePassword',context)({preventDefault(){},currentTarget:{}});
+  context.routeAccount=handler('components/account-access.tsx','routeAccount',context);
+  await handler('components/account-access.tsx','savePassword',context)({preventDefault(){},currentTarget:{}});
   assert.deepEqual(busy,[true,false],`${outcome} recovery must release its busy state`);
   assert.deepEqual(roleCalls,['account_role'],'Recovery checks the immutable backend account role after saving');
   if(outcome.startsWith('role-')) {

@@ -12,8 +12,8 @@ import { GoogleConnection } from "@/components/google-connection";
 import { ZoomConnection } from "@/components/zoom-connection";
 import { IntakeTemplatePicker } from "@/components/intake-template-picker";
 import { defaultQuestions } from "@/lib/intake";
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AvatarPicker } from "@/components/avatar-picker";
 import { Logo } from "@/components/site-header";
@@ -22,6 +22,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { db, configured, Profile, Service } from "@/lib/supabase";
 import { RecoveryStudio } from "@/components/recovery-account-links";
+import { observeWorkspaceIdentity } from "@/lib/workspace-session";
+import { accountSignInPath, clientWorkspacePath, needsConsultantWorkspace, isRecoveryOwnerWorkspace } from "@/lib/account-routing";
 type Hours = {
   weekday: number;
   start_time: string;
@@ -53,7 +55,19 @@ const dayNames = [
   "Saturday",
 ];
 export default function Studio() {
-  return process.env.NEXT_PUBLIC_BOOKING_RECOVERY === "1" ? <RecoveryStudio /> : <LegacyStudio />;
+  if (process.env.NEXT_PUBLIC_BOOKING_RECOVERY !== "1") return <LegacyStudio />;
+  return <Suspense fallback={<main id="main" className="p-8" role="status">Opening your workspace…</main>}><StudioIntent /></Suspense>;
+}
+function StudioIntent() {
+  const search = useSearchParams();
+  const explicit = needsConsultantWorkspace(search.toString());
+  const [identity, setIdentity] = useState<{ checked: boolean; userId: string | null }>({ checked: !configured, userId: null });
+  useEffect(() => {
+    if (configured) return observeWorkspaceIdentity(db().auth, setIdentity);
+  }, []);
+  if (!identity.checked && explicit) return <main id="main" className="p-8" role="status">Checking your account…</main>;
+  const accountWorkspace = identity.checked && identity.userId && !isRecoveryOwnerWorkspace(identity.userId, true);
+  return explicit || accountWorkspace ? <LegacyStudio key={identity.userId || "signed-out"} /> : <RecoveryStudio />;
 }
 function LegacyStudio() {
   const router = useRouter();
@@ -84,24 +98,25 @@ function LegacyStudio() {
   const [now, setNow] = useState(() => Date.now());
   const [refreshing, setRefreshing] = useState(false);
   const bookingAction = useRef(false);
-  const openedZoomIntent = useRef(false);
+  const openedConnectionIntent = useRef(false);
   useEffect(() => {
-    if (openedZoomIntent.current || loading || !profile || tab !== "profile" || new URLSearchParams(window.location.search).get("connect") !== "zoom") return;
-    const panel = document.getElementById("zoom-connection");
-    openedZoomIntent.current = true;
+    const intent = new URLSearchParams(window.location.search).get("connect");
+    if (openedConnectionIntent.current || loading || !profile || tab !== "profile" || !["google", "zoom"].includes(intent || "")) return;
+    const panel = document.getElementById(intent + "-connection");
+    openedConnectionIntent.current = true;
     panel?.focus({ preventScroll: true });
     panel?.scrollIntoView({ block: "center" });
   }, [loading, profile, tab]);
   useEffect(() => {
     if (!configured) return;
     const { data } = db().auth.onAuthStateChange(event => {
-      if (event === "SIGNED_OUT") { setProfile(null); setBookings([]); router.replace("/account/"); }
+      if (event === "SIGNED_OUT") { setProfile(null); setBookings([]); router.replace(accountSignInPath(window.location.search)); }
     });
     return () => data.subscription.unsubscribe();
   }, [router]);
   useEffect(() => {
     if (!configured) {
-      router.replace(new URLSearchParams(window.location.search).get("connect") === "zoom" ? "/account/?connect=zoom" : "/account");
+      router.replace(accountSignInPath(window.location.search));
       return;
     }
     async function load() {
@@ -110,17 +125,21 @@ function LegacyStudio() {
           data: { user },
         } = await db().auth.getUser();
         if (!user) {
-          router.replace(new URLSearchParams(window.location.search).get("connect") === "zoom" ? "/account/?connect=zoom" : "/account");
+          router.replace(accountSignInPath(window.location.search));
+          return;
+        }
+        if (isRecoveryOwnerWorkspace(user.id, process.env.NEXT_PUBLIC_BOOKING_RECOVERY === "1")) {
+          router.replace("/booking-review/");
           return;
         }
         const role = await db().rpc("account_role");
         if (role.error) throw role.error;
-        if (role.data !== "consultant") { router.replace("/client"); return; }
+        if (role.data !== "consultant") { router.replace(clientWorkspacePath); return; }
         setSiteOrigin(window.location.origin);
         setUid(user.id);
         const intent = new URLSearchParams(window.location.search);
         if (intent.has("stripe")) setTab("consultations");
-        else if (intent.get("connect") === "zoom" || intent.has("zoom") || intent.has("google")) setTab("profile");
+        else if (["google", "zoom"].includes(intent.get("connect") || "") || intent.has("zoom") || intent.has("google")) setTab("profile");
         const results = await Promise.all([
           db().from("profiles").select("*").eq("id", user.id).maybeSingle(),
           db()
@@ -350,7 +369,7 @@ function LegacyStudio() {
       <header className="studio-header">
         <Logo />
         <nav aria-label="Studio navigation">
-          <Link href="/book/demo">Booking demo ↗</Link><Link href="/client">My client bookings</Link>
+          <Link href="/book/demo">Booking demo ↗</Link><Link href={clientWorkspacePath}>My client bookings</Link>
           <Link href="/logout/?from=consultant">Sign out</Link>
         </nav>
       </header>

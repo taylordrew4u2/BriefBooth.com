@@ -13,9 +13,9 @@ function useZoomConnectionIntent() {
 
 function ConnectionNotice() {
   return <section aria-labelledby="connection-title" className="space-y-3 rounded-2xl border border-border bg-secondary p-5 sm:p-7">
-    <h2 id="connection-title" className="text-xl font-semibold">Zoom connection is temporarily unavailable</h2>
-    <p>The consultant account system is unavailable, so you cannot connect or change a Zoom account here right now. The existing 4u Digital consultation uses Google Meet.</p>
-    <p>No connection has been changed.</p>
+    <h2 id="connection-title" className="text-xl font-semibold">Connect your consultant account</h2>
+    <p>Sign in to your consultant account to manage your own connections. The existing 4u Digital consultation uses Google Meet.</p>
+    <Button asChild><Link href="/account/sign-in/?connect=zoom">Sign in to manage connections</Link></Button>
   </section>;
 }
 
@@ -39,13 +39,18 @@ function RecoveryAccessContent({ view, connection }: { view: AccountView; connec
       <section aria-labelledby="booking-link-title" className="space-y-4 rounded-2xl border border-border p-5 sm:p-7">
         <h2 id="booking-link-title" className="text-xl font-semibold">Open your private booking link</h2>
         <p>Use the link saved after your request or included in your confirmation email. It shows your current status, your Google Meet link once confirmed, and your cancellation options.</p>
-        <p>Account sign-in, registration, and the full account history are temporarily unavailable. You do not need an account to request a consultation.</p>
+        <p>You do not need an account to request a 4u Digital consultation. These consultations use the private booking link rather than the account history.</p>
         <Button asChild><Link href="/book/4u-digital/">Request a consultation</Link></Button>
         <p className="text-sm">Lost your booking link? <a className="underline underline-offset-4" href="mailto:admin@customtechbuilt4u.com">Contact 4u Digital</a> from the email address used for your request.</p>
       </section>
+      <section aria-labelledby="account-access-title" className="space-y-4 rounded-2xl border border-border p-5 sm:p-7">
+        <h2 id="account-access-title" className="text-xl font-semibold">Consultant and client accounts</h2>
+        <p>Sign in to manage your consultant page and connections, or view bookings linked to your client account.</p>
+        <div className="flex flex-wrap gap-3"><Button asChild variant="outline"><Link href="/account/sign-in/">Sign in to your account</Link></Button><Button asChild variant="outline"><Link href="/client/?workspace=account">Open account bookings</Link></Button></div>
+      </section>
       <section aria-labelledby="owner-access-title" className="space-y-4 rounded-2xl border border-border p-5 sm:p-7">
         <h2 id="owner-access-title" className="text-xl font-semibold">For the 4u Digital owner</h2>
-        <p>Use your existing private owner key to review requests and manage current consultations. Profile editing, new consultant accounts, and other full Studio settings remain unavailable.</p>
+        <p>Use your existing private owner key to review requests and manage current consultations. Your current consultation settings and business Calendar connection are separate from the consultant account workspace.</p>
         <Button asChild variant="outline"><Link href="/booking-review/">Review consultation requests</Link></Button>
       </section>
     </main>

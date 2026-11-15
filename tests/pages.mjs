@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 const origin = process.env.PAGES_TEST_URL || 'http://localhost:3000';
-for (const path of ['/', '/account/', '/studio/', '/book/demo', '/book/a-new-consultant', '/manage/11111111-1111-4111-8111-111111111111/']) {
+for (const path of ['/', '/account/', '/account/sign-in/?connect=google', '/account/sign-in/?connect=zoom', '/studio/', '/studio/?workspace=consultant', '/studio/?google=connected', '/studio/?zoom=connected', '/client/?workspace=account', '/book/demo', '/book/4u-digital/', '/book/zoom-review-consultant/', '/book/a-new-consultant', '/manage/11111111-1111-4111-8111-111111111111/']) {
   const response = await fetch(new URL(path, origin), {redirect:'manual'});
   assert.equal(response.status, 200, `Static route failed: ${path}`);
   assert.equal(response.headers.get('location'), null, `Rewrite changed public URL: ${path}`);
   assert.match(response.headers.get('content-type'), /text\/html/);
   assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
   assert.equal(response.headers.get('x-frame-options'), 'DENY');
-  if (path.startsWith('/manage/')) {
+  if (/^\/(manage|account|studio|client)\//.test(path)) {
     assert.equal(response.headers.get('cache-control'), 'no-store');
     assert.match(response.headers.get('x-robots-tag'), /noindex/);
   }

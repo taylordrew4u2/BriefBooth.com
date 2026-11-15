@@ -22,3 +22,11 @@
 /booking-review/*
   Cache-Control: no-store
   X-Robots-Tag: noindex, nofollow
+
+/account/*
+  Cache-Control: no-store
+  X-Robots-Tag: noindex, nofollow
+
+/studio/*
+  Cache-Control: no-store
+  X-Robots-Tag: noindex, nofollow

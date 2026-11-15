@@ -6,6 +6,7 @@ import { Logo } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { bookingMatchesSearch } from "@/lib/booking-search";
 
 type Service = { id: string; title: string; description?: string; duration: number };
 type Config = {
@@ -238,6 +239,7 @@ export function RecoveryReview() {
   const [token, setToken] = useState("");
   const [entry, setEntry] = useState("");
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -333,10 +335,13 @@ export function RecoveryReview() {
     } catch (e) { setActionError(message(e)); return false; }
     finally { lock.current = false; setBusy(false); setRefresh(v => v + 1); }
   }
-  return <Frame title="Review booking requests"><p className="mb-5">Approve a request to confirm the time and create its Google Meet link.</p><Notice text={actionError || error} />{notificationNotice && <p role="status" className="mb-5 rounded-xl bg-secondary p-4 text-sm">{notificationNotice}</p>}{!token ? <form className="space-y-4 rounded-2xl border border-border p-6" onSubmit={e => { e.preventDefault(); if (entry.trim()) { setActionError(""); setToken(entry.trim()); setEntry(""); } }}><label className="block space-y-2"><span>Private access key</span><Input type="password" value={entry} onChange={e => setEntry(e.target.value)} autoComplete="off" required /></label><p className="text-sm">Use your private owner key. Don’t share it with clients.</p><Button type="submit">Open requests</Button></form> : <>
-    <div className="mb-5 flex flex-wrap gap-3"><Button disabled={busy} variant="outline" onClick={() => setRefresh(v => v + 1)}>{busy && !loadingMore ? "Refreshing…" : "Refresh requests"}</Button><Button variant="ghost" disabled={busy} onClick={() => { setToken(""); setBookings([]); setLoaded(false); setNextCursor(null); visiblePages.current = 1; setError(""); setActionError(""); setNotificationNotice(""); }}>Lock page</Button></div>
+  const matches = bookings.filter(booking => bookingMatchesSearch(booking, search));
+  return <Frame title="Review booking requests"><p className="mb-5">Approve a request to confirm the time and create its Google Meet link.</p><p className="mb-5 text-sm"><Link className="underline underline-offset-4" href="/account/sign-in/">Consultant or client account? Sign in here.</Link></p><Notice text={actionError || error} />{notificationNotice && <p role="status" className="mb-5 rounded-xl bg-secondary p-4 text-sm">{notificationNotice}</p>}{!token ? <form className="space-y-4 rounded-2xl border border-border p-6" onSubmit={e => { e.preventDefault(); if (entry.trim()) { setActionError(""); setToken(entry.trim()); setEntry(""); } }}><label className="block space-y-2"><span>Private access key</span><Input type="password" value={entry} onChange={e => setEntry(e.target.value)} autoComplete="off" required /></label><p className="text-sm">Use your private owner key. Don’t share it with clients.</p><Button type="submit">Open requests</Button></form> : <>
+    <div className="mb-5 flex flex-wrap gap-3"><Button disabled={busy} variant="outline" onClick={() => setRefresh(v => v + 1)}>{busy && !loadingMore ? "Refreshing…" : "Refresh requests"}</Button><Button variant="ghost" disabled={busy} onClick={() => { setToken(""); setSearch(""); setBookings([]); setLoaded(false); setNextCursor(null); visiblePages.current = 1; setError(""); setActionError(""); setNotificationNotice(""); }}>Lock page</Button></div>
+    <label className="mb-5 block space-y-2"><span>Search loaded requests</span><Input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Name, email, or booking ID" autoComplete="off" /></label>
+    {loaded && search.trim() && !matches.length && <p role="status">No matching requests in the loaded results.{nextCursor ? " Load more requests to search earlier bookings." : ""}</p>}
     {busy && !loaded && <p role="status">Loading requests…</p>}{loaded && !bookings.length && <p>No booking requests yet.</p>}
-    <div className="space-y-5">{bookings.map(booking => <article key={booking.id} className="space-y-3 rounded-2xl border border-border p-5"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-lg font-semibold">{booking.client_name || "Reserved time"}</h2><span className="rounded-full bg-accent px-3 py-1 text-sm">{bookingStatus(booking)}</span></div>{booking.client_email && <p className="break-all">{booking.client_email}</p>}<p>{booking.title || booking.service_title || "Consultation"} · {stamp(booking.starts_at, booking.timezone)}</p>{booking.notes && <details><summary className="cursor-pointer underline underline-offset-4">Project details</summary><p className="mt-3 whitespace-pre-wrap break-words text-sm">{booking.notes}</p></details>}
+    <div className="space-y-5">{matches.map(booking => <article key={booking.id} className="space-y-3 rounded-2xl border border-border p-5"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-lg font-semibold">{booking.client_name || "Reserved time"}</h2><span className="rounded-full bg-accent px-3 py-1 text-sm">{bookingStatus(booking)}</span></div>{booking.client_email && <p className="break-all">{booking.client_email}</p>}<p>{booking.title || booking.service_title || "Consultation"} · {stamp(booking.starts_at, booking.timezone)}</p>{booking.notes && <details><summary className="cursor-pointer underline underline-offset-4">Project details</summary><p className="mt-3 whitespace-pre-wrap break-words text-sm">{booking.notes}</p></details>}
       {booking.source === "supabase" ? <p className="text-sm">Existing reservation. Manage this appointment through its original booking record.</p> : <>
         {booking.email_pending && <div className="space-y-3 rounded-xl bg-secondary p-4"><p className="text-sm">{notificationStatus(booking)}</p><Button variant="outline" disabled={busy} onClick={() => checkNotifications(booking.id)}>{booking.email_queued ? "Retry queued emails" : "Check email delivery"}</Button></div>}
         {booking.status === "confirming" && booking.meeting_error === "google_meet_failed" && <p className="text-sm">Google could not create the Meet link. Cancel this request and ask the client to request another time.</p>}
@@ -346,7 +351,7 @@ export function RecoveryReview() {
         {booking.status === "confirmed" && <><div className="flex flex-wrap items-center gap-3">{safeMeet(booking) && <a className="inline-block underline underline-offset-4" href={safeMeet(booking)!} target="_blank" rel="noopener noreferrer">Open Google Meet</a>}<Button disabled={busy} variant="outline" onClick={() => setDeclineId(booking.id)}>Cancel booking</Button></div><RecoveryReschedule booking={booking} token={token} busy={busy} apply={(startsAt, operationId) => reschedule(booking.id, startsAt, operationId)} /></>}
       </>}
     </article>)}</div>
-    {bookings.length > 0 && <p className="mt-5 text-sm" role="status">Showing {bookings.length} {bookings.length === 1 ? "request" : "requests"}{nextCursor ? ". More requests are available." : "."}</p>}
+    {bookings.length > 0 && <p className="mt-5 text-sm" role="status">Showing {matches.length} of {bookings.length} loaded {bookings.length === 1 ? "request" : "requests"}{nextCursor ? ". More requests are available." : "."}</p>}
     {nextCursor && <Button className="mt-4" variant="outline" disabled={busy} onClick={loadMore}>{loadingMore ? "Loading more requests…" : "Load more requests"}</Button>}
   </>}</Frame>;
 }
