@@ -32,4 +32,8 @@ The build reported two existing Next.js cache advisories. Next and its matching 
 
 Both existing MP4 files match their prior SHA256 values. The Worker contains the configured public Auth project and no unresolved browser build-variable references. No server credentials were moved or printed.
 
-Publication and live verification results will be appended separately.
+## Live-runtime correction
+
+The first live check found that normal browser Auth succeeded but the Worker's account verification returned 503. The cause was `redirect: error`, accepted by the Node test mock but unsupported by Cloudflare Workers. A local workerd probe reproduced the exact TypeError before any network request. The correction uses `manual` and continues to reject every redirect without forwarding the session credential. The focused account test now verifies 302/307 rejection as well as the supported mode. This preserves the same Auth project and permissions.
+
+Publication and final live verification results will be appended separately.

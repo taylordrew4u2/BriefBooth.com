@@ -22,8 +22,9 @@ const calls=[],calendar=new Map(),realFetch=globalThis.fetch;
 globalThis.fetch=async(input,options={})=>{
  const url=new URL(String(input));calls.push({url:url.href,method:options.method||'GET'});
  if(url.hostname==='test-project.supabase.co'){
-  authCalls++;assert.equal(url.pathname,'/auth/v1/user');assert.equal(options.headers.apikey,'dummy-public-key');assert.equal(options.redirect,'error');
+  authCalls++;assert.equal(url.pathname,'/auth/v1/user');assert.equal(options.headers.apikey,'dummy-public-key');assert.equal(options.redirect,'manual');
   if(authMode==='offline')throw Error('Offline');
+  if(authMode==='redirect302'||authMode==='redirect307')return new Response(null,{status:authMode==='redirect302'?302:307,headers:{Location:'https://untrusted.example.invalid/auth'}});
   if(authMode==='null')return Response.json(null);
   if(authMode==='unavailable')return new Response(null,{status:503});
   const user=users.get(options.headers.Authorization?.slice(7));
@@ -86,6 +87,7 @@ try{
  assert.equal((await request('client-bookings',{token:'header.anonymous.signature'})).status,401);
  authMode='null';assert.equal((await ownerConfig()).status,401);authMode='offline';assert.equal((await ownerConfig()).status,503);
  authMode='unavailable';assert.equal((await ownerConfig()).status,503);authMode='normal';
+ for(const mode of ['redirect302','redirect307']){authMode=mode;const before=authCalls;assert.equal((await ownerConfig()).status,503);assert.equal(authCalls,before+1,'Auth redirects are rejected without forwarding the session to another destination');}authMode='normal';
  const user=users.get('header.owner.signature');users.delete('header.owner.signature');assert.equal((await ownerConfig()).status,401);users.set('header.owner.signature',user);
  assert.ok(!JSON.stringify(first[0].body).includes(privateKey));assert.ok(!JSON.stringify(first[0].body).includes('dummy-refresh'));
  assert.deepEqual(first[0].body.calendar,{configured:true,provider:'google_meet'});

@@ -111,7 +111,9 @@ async function sessionIdentity(request,env){
  if(!key)fail(503,'Account verification is temporarily unavailable.');
  // Auth validates the token against this one configured project. Client claims,
  // editable metadata, email input and UI routing never grant owner access.
- let response;try{response=await fetch(new URL('/auth/v1/user',url),{headers:{apikey:key,Authorization:'Bearer '+token},redirect:'error',signal:AbortSignal.timeout(8000)});}catch{fail(503,'Account verification is temporarily unavailable.');}
+ // Workers supports manual redirects, not the browser-only error mode. Never
+ // follow a redirect with the user's Bearer token; non-2xx stays fail-closed.
+ let response;try{response=await fetch(new URL('/auth/v1/user',url),{headers:{apikey:key,Authorization:'Bearer '+token},redirect:'manual',signal:AbortSignal.timeout(8000)});}catch{fail(503,'Account verification is temporarily unavailable.');}
  if(!response.ok){if([400,401,403].includes(response.status))fail(401,'Your sign-in has expired. Sign in again.');fail(503,'Account verification is temporarily unavailable.');}
  let user;try{user=await response.json();}catch{fail(503,'Account verification is temporarily unavailable.');}
  const email=typeof user?.email==='string'?user.email.trim().toLowerCase():'';
