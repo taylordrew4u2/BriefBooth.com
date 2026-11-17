@@ -62,6 +62,22 @@ function clientHarness(overrides={}){
 // Run the actual client cancellation handler, checking session authorization and
 // source isolation when legacy and recovery rows happen to share an identifier.
 {
+ const h=clientHarness();h.state[2]=false;h.state[8]=Date.parse('2030-01-01T12:00:00Z');
+ h.state[0]=[
+  {id:'past-cancelling',source:'recovery',status:'cancelling',title:'In-progress cancellation',starts_at:'2029-12-31T12:00:00Z'},
+  {id:'past-confirmed',source:'recovery',status:'confirmed',title:'Past consultation',starts_at:'2029-12-31T12:00:00Z'},
+  {id:'future-confirmed',source:'recovery',status:'confirmed',title:'Future consultation',starts_at:'2030-01-02T12:00:00Z'},
+  {id:'legacy-cancelling',source:'supabase',status:'cancelling',title:'Legacy cancellation',starts_at:'2029-12-31T12:00:00Z',manage_token:'original-token'},
+ ];
+ const cards=treeNodes(h.render()).filter(node=>node.type==='article');
+ const card=id=>cards.find(node=>node.props.key.endsWith(':'+id));
+ assert.match(content(card('past-cancelling')),/Retry cancellation/,'An already-authorized cancellation can finish after its appointment starts');
+ assert.doesNotMatch(content(card('past-confirmed')),/Cancel booking|Retry cancellation/,'Starting a new cancellation remains unavailable after start');
+ assert.match(content(card('future-confirmed')),/Cancel booking/);
+ assert.doesNotMatch(content(card('legacy-cancelling')),/Cancel booking|Retry cancellation/,'Legacy actions stay with their original booking source');
+ h.state[7]='past-cancelling';assert.match(content(h.render()),/Yes, cancel booking/,'The retry still uses the explicit cancellation confirmation');
+}
+{
  const rows=[{id:'same',source:'recovery',status:'confirmed'},{id:'same',source:'supabase',status:'confirmed'}];let body,notice;
  const context={AbortController,token:'verified-session',lock:{current:false},action:{current:null},setBusy:()=>{},setError:()=>{},setNotice:value=>{notice=value;},setConfirm:()=>{},setBookings:fn=>{rows.splice(0,rows.length,...fn(rows));},recoveryApi:async(path,options)=>{assert.equal(path,'cancel');assert.equal(options.token,'verified-session');body=options.body;return {booking:{id:'same',status:'cancelled'}};}};
  await executeFunction('components/account-bookings.tsx','cancel',context)('same');assert.equal(body.bookingId,'same');assert.equal(rows[0].status,'cancelled');assert.equal(rows[1].status,'confirmed');assert.equal(notice,'Your booking is cancelled.');

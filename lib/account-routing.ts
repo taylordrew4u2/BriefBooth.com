@@ -10,6 +10,10 @@ export function accountSignInPath(search = "") {
   const intent = connection(search);
   return "/account/sign-in/" + (intent ? "?connect=" + intent : "");
 }
+export function accountCallbackPath(search = "") {
+  const intent = connection(search);
+  return "/account/" + (intent ? "?connect=" + intent : "");
+}
 export function consultantWorkspacePath(search = "") {
   const intent = connection(search);
   return "/studio/?workspace=consultant" + (intent ? "&connect=" + intent : "");

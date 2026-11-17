@@ -318,3 +318,36 @@ for(const invalid of [{value:'',valid:false},{value:'0002-11-16',valid:false},{v
   assert.equal(state.open,false);assert.equal(state.day,'');assert.equal(state.slots.length,0);assert.equal(state.slot,'');assert.equal(state.loading,false);assert.equal(state.error,'');
 }
 console.log('PASS native reschedule date: partial/out-of-range input cancels stale availability without fetching; completed dates recover; closing clears draft');
+
+// Public booking needs the same native keyboard behavior. Execute its actual
+// handler and effect so clearing a date cannot retain an old selectable slot,
+// partial years cannot hit the API, and old responses cannot repopulate times.
+const publicComponent=rescheduleSource.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='RecoveryBooking');
+const publicEffects=publicComponent.body.statements.filter(node=>ts.isExpressionStatement(node)&&ts.isCallExpression(node.expression)&&node.expression.expression.getText(rescheduleSource)==='useEffect');
+const publicEffectJs=ts.transpileModule(`const availabilityEffect=${publicEffects[1].expression.arguments[0].getText(rescheduleSource)};`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+const startPublicAvailability=context=>vm.runInNewContext(`(() => { ${publicEffectJs}; return availabilityEffect; })()`,context)();
+nativeDateInput=undefined;findNativeDateInput(publicComponent);assert(nativeDateInput);
+assert.equal(dateAttribute('value'),undefined,'Public booking must preserve incomplete native date segments');
+assert.equal(dateAttribute('defaultValue')?.initializer?.text,'');
+assert.equal(dateAttribute('onInput')?.initializer?.expression?.getText(rescheduleSource),'changeBookingDate');
+for(const invalid of [{value:'',valid:false},{value:'0002-11-16',valid:false},{value:'0020-11-16',valid:false},{value:'0202-11-16',valid:false},{value:'2027-11-16',valid:true},{value:'not-a-date',valid:true}]) {
+  const requests=[];
+  const state={day:'2026-11-16',slots:['old-time'],slot:'old-time',checking:false,error:'old error'};
+  const context={day:state.day,dates:{min:'2026-11-10',max:'2027-01-09'},minDay:'2026-11-10',maxDay:'2027-01-09',serviceId:'test-service',configConflict:false,AbortController,encodeURIComponent,message:error=>error.message,
+    api:(path,options)=>new Promise(resolve=>requests.push({path,options,resolve})),
+    setDay:value=>{state.day=value;context.day=value;},setSlots:value=>{state.slots=value;},setSlot:value=>{state.slot=value;},setChecking:value=>{state.checking=value;},setSlotsError:value=>{state.error=value;},
+  };
+  const oldCleanup=startPublicAvailability(context);await new Promise(setImmediate);assert.equal(requests.length,1);
+  state.slot='old-time';
+  handler('components/recovery-client.tsx','changeBookingDate',context)({currentTarget:Object.freeze({value:invalid.value,validity:Object.freeze({valid:invalid.valid})})});
+  assert.equal(state.slot,'','A partial edit clears the old time immediately');
+  oldCleanup();const invalidCleanup=startPublicAvailability(context);await new Promise(setImmediate);
+  assert.equal(requests.length,1);assert.equal(requests[0].options.signal.aborted,true);assert.equal(state.day,'');assert.equal(state.checking,false);
+  requests[0].resolve({slots:['stale-time']});await new Promise(setImmediate);assert.equal(state.slots.length,0);assert.equal(state.error,'');
+  invalidCleanup();
+  handler('components/recovery-client.tsx','changeBookingDate',context)({currentTarget:Object.freeze({value:'2026-11-17',validity:Object.freeze({valid:true})})});
+  const validCleanup=startPublicAvailability(context);await new Promise(setImmediate);assert.equal(requests.length,2);assert.match(requests[1].path,/day=2026-11-17$/);
+  requests[1].resolve({slots:['new-time']});await new Promise(setImmediate);assert.equal(state.slots[0],'new-time');assert.equal(state.checking,false);validCleanup();
+  context.configConflict=true;const conflictCleanup=startPublicAvailability(context);await new Promise(setImmediate);assert.equal(requests.length,2,'A stale consultation configuration still blocks availability');conflictCleanup();
+}
+console.log('PASS native public booking date: incomplete edits clear old slots, invalid dates never fetch, stale responses are discarded, complete dates recover');

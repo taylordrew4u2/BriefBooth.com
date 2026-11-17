@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-import { accountDestination, accountSignInPath, consultantWorkspacePath, needsAccountAccess, needsConsultantWorkspace, isRecoveryOwnerWorkspace, recoveryOwnerId, usesRecoveryBooking } from '../lib/account-routing.ts';
+import { accountCallbackPath, accountDestination, accountSignInPath, consultantWorkspacePath, needsAccountAccess, needsConsultantWorkspace, isRecoveryOwnerWorkspace, recoveryOwnerId, usesRecoveryBooking } from '../lib/account-routing.ts';
 import { bookingMatchesSearch } from '../lib/booking-search.ts';
 import { observeWorkspaceIdentity } from '../lib/workspace-session.ts';
 
@@ -39,6 +39,28 @@ function visit(node) {
 }
 visit(source);
 assert(routeCallback);
+// Execute both real signup and OAuth callback expressions. The fixed callback
+// retains a recognized provider through external confirmation without accepting
+// arbitrary redirect targets from URL parameters.
+const callbackExpressions=[];
+function findAuthCallbacks(node) {
+  if(ts.isCallExpression(node)&&['db().auth.signUp','db().auth.signInWithOAuth'].includes(node.expression.getText(source))) {
+    const options=node.arguments[0].properties.find(property=>property.name?.getText(source)==='options').initializer;
+    callbackExpressions.push(options.properties.find(property=>['emailRedirectTo','redirectTo'].includes(property.name?.getText(source))).initializer.getText(source));
+  }
+  ts.forEachChild(node,findAuthCallbacks);
+}
+findAuthCallbacks(source);assert.equal(callbackExpressions.length,2);
+for(const search of ['?connect=google','?connect=zoom','?connect=google&next=https://attacker.example','?connect=https://attacker.example&returnTo=//attacker.example','']) {
+  const intent=new URLSearchParams(search).get('connect');
+  const expected=['google','zoom'].includes(intent)?`?connect=${intent}`:'';
+  for(const expression of callbackExpressions) {
+    const destination=vm.runInNewContext(expression,{accountCallbackPath,location:{origin:'https://briefbooth.com',search}});
+    assert.equal(destination,`https://briefbooth.com/account/${expected}`);
+    assert.equal(new URL(destination).origin,'https://briefbooth.com');
+    assert.equal(accountDestination('consultant',false,new URL(destination).search,true),`/studio/?workspace=consultant${expected?'&connect='+intent:''}`);
+  }
+}
 const js = ts.transpileModule(`const routeAccount = ${routeCallback.getText(source)};`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
 for (const [role, clientIntent, error] of [['consultant', false, false], ['client', false, false], ['consultant', true, false], ['consultant', false, true]]) {
   const routes = [], removed = [], messages = [];

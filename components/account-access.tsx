@@ -6,7 +6,7 @@ import { Logo } from "@/components/site-header";
 import { db, configured } from "@/lib/supabase";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { accountDestination, clientWorkspacePath } from "@/lib/account-routing";
+import { accountCallbackPath, accountDestination, clientWorkspacePath } from "@/lib/account-routing";
 export default function AccountAccess() {
   const router = useRouter();
   const formHeading = useRef<HTMLHeadingElement>(null);
@@ -59,7 +59,7 @@ export default function AccountAccess() {
         if (error) throw error;
         setMessage("Check your email for the password reset link.");
       } else if (mode === "signup") {
-        const { data, error } = await db().auth.signUp({ email, password, options: { emailRedirectTo: location.origin + (new URLSearchParams(location.search).get("connect") === "zoom" ? "/account/?connect=zoom" : "/account/") } });
+        const { data, error } = await db().auth.signUp({ email, password, options: { emailRedirectTo: location.origin + accountCallbackPath(location.search) } });
         if (error) throw error;
         if (data.session) await routeAccount();
         else
@@ -163,7 +163,7 @@ export default function AccountAccess() {
                     try {
                       const { error } = await db().auth.signInWithOAuth({
                         provider: "google",
-                        options: { redirectTo: location.origin + (new URLSearchParams(location.search).get("connect") === "zoom" ? "/account/?connect=zoom" : "/account/") },
+                        options: { redirectTo: location.origin + accountCallbackPath(location.search) },
                       });
                       if (error) throw error;
                     } catch (e) {

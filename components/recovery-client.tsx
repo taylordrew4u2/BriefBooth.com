@@ -124,6 +124,9 @@ export default function RecoveryBooking() {
   const request = useRef<{ key: string; id: string } | null>(null);
   const [reload, setReload] = useState(0);
   const [configConflict, setConfigConflict] = useState(false);
+  const dates = config ? dateBounds(config.profile.timezone, config.preferences?.horizon_days) : undefined;
+  const minDay = dates?.min || "";
+  const maxDay = dates?.max || "";
   useEffect(() => {
     const controller = new AbortController();
     Promise.resolve().then(() => { if (!controller.signal.aborted) { setLoading(true); setError(""); } });
@@ -136,13 +139,21 @@ export default function RecoveryBooking() {
   }, [reload]);
   useEffect(() => {
     const controller = new AbortController();
-    Promise.resolve().then(() => { if (!controller.signal.aborted) { setSlots([]); setSlot(""); setSlotsError(""); setChecking(Boolean(serviceId && day && !configConflict)); } });
-    if (serviceId && day && !configConflict) api<{ slots: string[] }>(`slots?service=${encodeURIComponent(serviceId)}&day=${encodeURIComponent(day)}`, { signal: controller.signal })
+    const canLoad = serviceId && minDay && maxDay && /^\d{4}-\d{2}-\d{2}$/.test(day) && day >= minDay && day <= maxDay && !configConflict;
+    Promise.resolve().then(() => { if (!controller.signal.aborted) { setSlots([]); setSlot(""); setSlotsError(""); setChecking(Boolean(canLoad)); } });
+    if (canLoad) api<{ slots: string[] }>(`slots?service=${encodeURIComponent(serviceId)}&day=${encodeURIComponent(day)}`, { signal: controller.signal })
       .then(value => { if (!controller.signal.aborted) setSlots(value.slots); })
       .catch(e => { if (!controller.signal.aborted) setSlotsError(message(e)); })
       .finally(() => { if (!controller.signal.aborted) setChecking(false); });
     return () => controller.abort();
-  }, [serviceId, day, slotsRefresh, configConflict]);
+  }, [serviceId, day, slotsRefresh, configConflict, minDay, maxDay]);
+  function changeBookingDate(event: FormEvent<HTMLInputElement>) {
+    // Preserve native partial date segments while invalidating any previous time selection.
+    const input = event.currentTarget;
+    const nextDay = dates && input.validity.valid && /^\d{4}-\d{2}-\d{2}$/.test(input.value) && input.value >= dates.min && input.value <= dates.max ? input.value : "";
+    if (nextDay === day) return;
+    setDay(nextDay); setSlots([]); setSlot(""); setSlotsError(""); setChecking(Boolean(nextDay && serviceId && !configConflict));
+  }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitLock.current || !config || !slot || configConflict) return;
@@ -160,14 +171,13 @@ export default function RecoveryBooking() {
   const service = config?.services.find(s => s.id === serviceId);
   const projectQuestion = config?.profile.intake_questions?.find(q => q.id === "project-types" && q.options?.length);
   const projectTypes = [...(projectQuestion?.options || [])].sort((a, b) => Number(b === "Website") - Number(a === "Website"));
-  const dates = config ? dateBounds(config.profile.timezone, config.preferences?.horizon_days) : undefined;
   if (result) return <Frame title="Your request is saved"><div className="space-y-5 rounded-2xl border border-border p-6"><p className="text-lg font-semibold">{statusLabels[result.status] || "Check your booking status"}</p><p>{stamp(slot, config?.profile.timezone)}</p><p>{result.status === "pending_approval" ? "This time is requested, not confirmed yet. Once approved, your booking page will show your Google Meet link." : "Open your private booking page to see the current status and any Google Meet link."}</p>{result.email_pending && <p role="status" className="rounded-xl bg-secondary p-4 text-sm">{clientEmailStatus(result)} Your request is saved. Keep the private booking link below and use it to check your status.</p>}<Button asChild><a href={`/booking-status/#token=${encodeURIComponent(result.token)}`}>View your booking</a></Button><p className="text-sm">Save the private booking link. It lets you check the status or cancel your request.</p></div></Frame>;
   return <Frame title={config?.profile.headline || "Book a consultation"} name={config?.profile.name}><Notice text={error} />{configConflict && <div className="mb-5 space-y-3"><p>The consultation details changed while this form was open. Reload them and choose a time again before submitting.</p><Button type="button" onClick={() => setReload(value => value + 1)}>Reload booking details</Button></div>}{loading ? <p role="status">Loading consultation details…</p> : !config ? <Button onClick={() => setReload(v => v + 1)}>Try again</Button> : !config.services.length ? <p>No consultations are available right now. Please contact 4u Digital to arrange a time.</p> : <>
     <div className="mb-7 space-y-3">{config.profile.bio && <p>{config.profile.bio}</p>}<p>{service?.description || "I build websites for businesses and people. I also build apps and custom software."}</p><div className="flex flex-wrap gap-2"><span className="rounded-full bg-secondary px-3 py-1 text-sm">Free</span><span className="rounded-full bg-secondary px-3 py-1 text-sm">{service?.duration || 30} minutes</span><span className="rounded-full bg-accent px-3 py-1 text-sm">Google Meet</span></div></div>
     <form onSubmit={submit} className="space-y-7 rounded-2xl border border-border p-5 sm:p-7" aria-busy={submitting}>
       <fieldset disabled={submitting} className="space-y-5"><legend className="mb-4 text-xl font-semibold">Choose a time</legend>
         {config.services.length > 1 && <label className="block space-y-2"><span>Consultation</span><select className={fieldClass} value={serviceId} onChange={e => { setSlot(""); setServiceId(e.target.value); }} required>{config.services.map(s => <option key={s.id} value={s.id}>{s.title} · {s.duration} minutes</option>)}</select></label>}
-        <label className="block space-y-2"><span>Preferred date</span><Input type="date" value={day} min={dates?.min} max={dates?.max} onChange={e => { setSlot(""); setDay(e.target.value); }} required /></label>
+        <label className="block space-y-2"><span>Preferred date</span><Input key={config.revision} type="date" defaultValue="" min={dates?.min} max={dates?.max} onInput={changeBookingDate} required /></label>
         <p className="text-sm">Times below are shown in {config.profile.timezone.replaceAll("_", " ")}. Your appointment needs approval.</p>
         {checking ? <p role="status">Checking available times…</p> : slotsError ? <Notice text={slotsError} /> : day && <label className="block space-y-2"><span>Available time</span><select className={fieldClass} value={slot} onChange={e => setSlot(e.target.value)} required disabled={!slots.length}><option value="">{slots.length ? "Choose a time" : "No available times — choose another date"}</option>{slots.map(s => <option key={s} value={s}>{stamp(s, config.profile.timezone)}</option>)}</select></label>}
         {day && <Button type="button" variant="outline" disabled={checking} onClick={() => { setSlot(""); setSlotsRefresh(v => v + 1); }}>{slotsError ? "Try checking times again" : "Refresh available times"}</Button>}
