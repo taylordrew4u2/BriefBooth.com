@@ -39,7 +39,7 @@ globalThis.fetch=async(url,opts={})=>{
 };
 const request=async(path,{method='GET',data,token,origin='https://briefbooth.com',ip='192.0.2.1',ctx}={})=>{const headers={'cf-connecting-ip':ip};if(token)headers.Authorization='Bearer '+token;if(method==='POST'){if(origin)headers.Origin=origin;if(data!==undefined)headers['Content-Type']='application/json';}const r=await handleRecovery(new Request('https://briefbooth.com/api/recovery/'+path,{method,headers,body:data===undefined?undefined:JSON.stringify(data)}),env,ctx);return {status:r.status,body:await r.json()};};
 const day=new Date(Date.now()+3*86400000).toISOString().slice(0,10);
-const input=(time='10:00',id=crypto.randomUUID())=>({serviceId:'service',startsAt:new Date(recoveryTest.localInstant(day,time,config.profile.timezone)).toISOString(),name:'Test Client',email:'client@example.com',notes:'Dummy only',answers:{'project-types':'Website'},requestId:id});
+const input=(time='10:00',id=crypto.randomUUID())=>({configRevision:1,serviceId:'service',startsAt:new Date(recoveryTest.localInstant(day,time,config.profile.timezone)).toISOString(),name:'Test Client',email:'client@example.com',notes:'Dummy only',answers:{'project-types':'Website'},requestId:id});
 try{
  const savedOwnerHash=env.RECOVERY_OWNER_TOKEN_SHA256;delete env.RECOVERY_OWNER_TOKEN_SHA256;assert.equal((await request('config')).status,503);env.RECOVERY_OWNER_TOKEN_SHA256=savedOwnerHash;
  const c=await request('config');assert.equal(c.status,200);assert.deepEqual(c.body.profile.intake_questions.map(question=>question.id),['project-types']);assert.ok(!JSON.stringify(c).includes('dummy-secret'));

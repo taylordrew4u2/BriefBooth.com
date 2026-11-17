@@ -132,7 +132,7 @@ try{
  const pendingDay=new Date(Date.parse(baseDay+'T12:00Z')+3*86400000).toISOString().slice(0,10);
  const held=await request(`slots?service=service&day=${pendingDay}`,{token:null,ip:pending.ip});assert.ok(!held.body.slots.includes(pendingChange.startsAt));assert.ok(!held.body.slots.includes(new Date(pending.starts).toISOString()));
  assert.equal((await move(pending,pending.change('15:00'))).status,409);
- const attemptedBook={serviceId:'service',startsAt:pendingChange.startsAt,name:'Other dummy',email:'other@example.invalid',requestId:crypto.randomUUID()};
+ const attemptedBook={configRevision:1,serviceId:'service',startsAt:pendingChange.startsAt,name:'Other dummy',email:'other@example.invalid',requestId:crypto.randomUUID()};
  assert.equal((await request('book',{method:'POST',data:attemptedBook,token:null,ip:'192.0.2.200'})).status,409);
  // An old confirmation queued during a pending remote change cannot be sent.
  sql.prepare("INSERT INTO recovery_emails(id,booking_id,kind,recipient,subject,body,created_ms) VALUES(?,?,'confirmed_client','old@example.invalid','Old time','Old',?)").run(pending.id+':confirmed_client',pending.id,Date.now());

@@ -7,10 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { bookingMatchesSearch } from "@/lib/booking-search";
+import { useAccountSession } from "@/components/use-account-session";
+import { recoveryOwnerId } from "@/lib/account-routing";
+import { RecoveryOwnerSettings } from "@/components/recovery-owner-settings";
+import { RecoveryLegacyHistory } from "@/components/recovery-legacy-history";
 
 type Service = { id: string; title: string; description?: string; duration: number };
 type Config = {
-  profile: { timezone: string; intake_questions?: { id: string; options?: string[] }[] };
+  revision: number;
+  profile: { name?: string; headline?: string; bio?: string; timezone: string; intake_questions?: { id: string; options?: string[] }[] };
   services: Service[];
   preferences?: { horizon_days?: number };
 };
@@ -70,7 +75,7 @@ async function api<T>(path: string, options: { body?: unknown; token?: string; s
     body: options.body === undefined ? undefined : JSON.stringify(options.body), signal: options.signal,
   });
   const data = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(typeof data?.error === "string" ? data.error : "We couldn’t complete that request. Please try again.");
+  if (!response.ok) throw Object.assign(new Error(typeof data?.error === "string" ? data.error : "We couldn’t complete that request. Please try again."), { code: data?.code, status: response.status });
   return data as T;
 }
 function message(error: unknown) { return error instanceof Error ? error.message : "Please try again."; }
@@ -89,11 +94,11 @@ function safeMeet(booking: Booking) {
   const value = booking.meeting_url || booking.meet_url || "";
   return /^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}$/.test(value) ? value : null;
 }
-function Frame({ title, children }: { title: string; children: ReactNode }) {
+function Frame({ title, children, name = "4u Digital" }: { title: string; children: ReactNode; name?: string }) {
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => { heading.current?.focus(); }, [title]);
   return <><header className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-5 py-6"><Logo /><Link href="/" className="text-sm underline underline-offset-4">Home</Link></header>
-    <main id="main" className="mx-auto max-w-3xl px-5 pb-16 pt-6"><p className="mb-2 text-sm font-semibold tracking-wide">4u Digital</p><h1 ref={heading} tabIndex={-1} className="mb-6 text-3xl font-semibold tracking-tight sm:text-4xl">{title}</h1>{children}</main>
+    <main id="main" className="mx-auto max-w-3xl px-5 pb-16 pt-6"><p className="mb-2 text-sm font-semibold tracking-wide">{name}</p><h1 ref={heading} tabIndex={-1} className="mb-6 text-3xl font-semibold tracking-tight sm:text-4xl">{title}</h1>{children}</main>
     <footer className="mx-auto flex max-w-3xl flex-wrap gap-5 px-5 pb-8 text-sm"><Link href="/privacy/" className="underline">Privacy</Link><a href="mailto:admin@customtechbuilt4u.com" className="underline">Contact 4u Digital</a></footer></>;
 }
 function Notice({ text }: { text: string }) {
@@ -118,27 +123,29 @@ export default function RecoveryBooking() {
   const submitLock = useRef(false);
   const request = useRef<{ key: string; id: string } | null>(null);
   const [reload, setReload] = useState(0);
+  const [configConflict, setConfigConflict] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
-    Promise.resolve().then(() => { setLoading(true); setError(""); });
+    Promise.resolve().then(() => { if (!controller.signal.aborted) { setLoading(true); setError(""); } });
     api<Config>("config", { signal: controller.signal }).then(value => {
-      setConfig(value); setServiceId(value.services[0]?.id || "");
+      if (controller.signal.aborted) return;
+      setConfig(value); setServiceId(value.services[0]?.id || ""); setDay(""); setSlot(""); setSlots([]); setConfigConflict(false);
     }).catch(e => { if (!controller.signal.aborted) setError(message(e)); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [reload]);
   useEffect(() => {
     const controller = new AbortController();
-    Promise.resolve().then(() => { if (!controller.signal.aborted) { setSlots([]); setSlot(""); setSlotsError(""); setChecking(Boolean(serviceId && day)); } });
-    if (serviceId && day) api<{ slots: string[] }>(`slots?service=${encodeURIComponent(serviceId)}&day=${encodeURIComponent(day)}`, { signal: controller.signal })
+    Promise.resolve().then(() => { if (!controller.signal.aborted) { setSlots([]); setSlot(""); setSlotsError(""); setChecking(Boolean(serviceId && day && !configConflict)); } });
+    if (serviceId && day && !configConflict) api<{ slots: string[] }>(`slots?service=${encodeURIComponent(serviceId)}&day=${encodeURIComponent(day)}`, { signal: controller.signal })
       .then(value => { if (!controller.signal.aborted) setSlots(value.slots); })
       .catch(e => { if (!controller.signal.aborted) setSlotsError(message(e)); })
       .finally(() => { if (!controller.signal.aborted) setChecking(false); });
     return () => controller.abort();
-  }, [serviceId, day, slotsRefresh]);
+  }, [serviceId, day, slotsRefresh, configConflict]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (submitLock.current || !config || !slot) return;
+    if (submitLock.current || !config || !slot || configConflict) return;
     const data = new FormData(event.currentTarget);
     if (data.get("website")) return;
     const selectedProject = String(data.get("project-type") || "");
@@ -146,8 +153,8 @@ export default function RecoveryBooking() {
     const key = JSON.stringify(body);
     if (request.current?.key !== key) request.current = { key, id: crypto.randomUUID() };
     submitLock.current = true; setSubmitting(true); setError("");
-    try { setResult(await api("book", { body: { ...body, requestId: request.current.id } })); }
-    catch (e) { setError(message(e)); }
+    try { setResult(await api("book", { body: { ...body, requestId: request.current.id, configRevision: config.revision } })); }
+    catch (e) { setError(message(e)); if ((e as { code?: string })?.code === "config_changed") { setConfigConflict(true); setSlot(""); setSlots([]); setChecking(false); } }
     finally { submitLock.current = false; setSubmitting(false); }
   }
   const service = config?.services.find(s => s.id === serviceId);
@@ -155,8 +162,8 @@ export default function RecoveryBooking() {
   const projectTypes = [...(projectQuestion?.options || [])].sort((a, b) => Number(b === "Website") - Number(a === "Website"));
   const dates = config ? dateBounds(config.profile.timezone, config.preferences?.horizon_days) : undefined;
   if (result) return <Frame title="Your request is saved"><div className="space-y-5 rounded-2xl border border-border p-6"><p className="text-lg font-semibold">{statusLabels[result.status] || "Check your booking status"}</p><p>{stamp(slot, config?.profile.timezone)}</p><p>{result.status === "pending_approval" ? "This time is requested, not confirmed yet. Once approved, your booking page will show your Google Meet link." : "Open your private booking page to see the current status and any Google Meet link."}</p>{result.email_pending && <p role="status" className="rounded-xl bg-secondary p-4 text-sm">{clientEmailStatus(result)} Your request is saved. Keep the private booking link below and use it to check your status.</p>}<Button asChild><a href={`/booking-status/#token=${encodeURIComponent(result.token)}`}>View your booking</a></Button><p className="text-sm">Save the private booking link. It lets you check the status or cancel your request.</p></div></Frame>;
-  return <Frame title="Need a website built?"><Notice text={error} />{loading ? <p role="status">Loading consultation details…</p> : !config ? <Button onClick={() => setReload(v => v + 1)}>Try again</Button> : !config.services.length ? <p>No consultations are available right now. Please contact 4u Digital to arrange a time.</p> : <>
-    <div className="mb-7 space-y-3"><p>{service?.description || "I build websites for businesses and people. I also build apps and custom software."}</p><div className="flex flex-wrap gap-2"><span className="rounded-full bg-secondary px-3 py-1 text-sm">Free</span><span className="rounded-full bg-secondary px-3 py-1 text-sm">{service?.duration || 30} minutes</span><span className="rounded-full bg-accent px-3 py-1 text-sm">Google Meet</span></div></div>
+  return <Frame title={config?.profile.headline || "Book a consultation"} name={config?.profile.name}><Notice text={error} />{configConflict && <div className="mb-5 space-y-3"><p>The consultation details changed while this form was open. Reload them and choose a time again before submitting.</p><Button type="button" onClick={() => setReload(value => value + 1)}>Reload booking details</Button></div>}{loading ? <p role="status">Loading consultation details…</p> : !config ? <Button onClick={() => setReload(v => v + 1)}>Try again</Button> : !config.services.length ? <p>No consultations are available right now. Please contact 4u Digital to arrange a time.</p> : <>
+    <div className="mb-7 space-y-3">{config.profile.bio && <p>{config.profile.bio}</p>}<p>{service?.description || "I build websites for businesses and people. I also build apps and custom software."}</p><div className="flex flex-wrap gap-2"><span className="rounded-full bg-secondary px-3 py-1 text-sm">Free</span><span className="rounded-full bg-secondary px-3 py-1 text-sm">{service?.duration || 30} minutes</span><span className="rounded-full bg-accent px-3 py-1 text-sm">Google Meet</span></div></div>
     <form onSubmit={submit} className="space-y-7 rounded-2xl border border-border p-5 sm:p-7" aria-busy={submitting}>
       <fieldset disabled={submitting} className="space-y-5"><legend className="mb-4 text-xl font-semibold">Choose a time</legend>
         {config.services.length > 1 && <label className="block space-y-2"><span>Consultation</span><select className={fieldClass} value={serviceId} onChange={e => { setSlot(""); setServiceId(e.target.value); }} required>{config.services.map(s => <option key={s.id} value={s.id}>{s.title} · {s.duration} minutes</option>)}</select></label>}
@@ -170,7 +177,7 @@ export default function RecoveryBooking() {
         <div className="space-y-2"><label className="block" htmlFor="consultation-note">What would you like it to do? <span className="text-sm text-muted-foreground">(optional)</span></label><Textarea id="consultation-note" name="notes" maxLength={2000} rows={3} aria-describedby="consultation-note-help" /><p id="consultation-note-help" className="text-sm text-muted-foreground">A sentence is plenty. For example, “I’d like customers to book appointments online.”</p></div>
         <div hidden aria-hidden="true"><label>Website<Input name="website" autoComplete="off" tabIndex={-1} /></label></div>
       </fieldset>
-      <p className="text-sm">No payment is required. 4u Digital will review your request before confirming the time.</p><Button type="submit" disabled={submitting || checking || !slot} size="lg">{submitting ? "Saving your request…" : "Request this time"}</Button>
+      <p className="text-sm">No payment is required. 4u Digital will review your request before confirming the time.</p><Button type="submit" disabled={submitting || checking || !slot || configConflict} size="lg">{submitting ? "Saving your request…" : "Request this time"}</Button>
     </form></>}</Frame>;
 }
 
@@ -236,7 +243,14 @@ export function RecoveryStatus() {
 }
 
 export function RecoveryReview() {
-  const [token, setToken] = useState("");
+  const session = useAccountSession();
+  if (!session.checked) return <Frame title="Your Studio"><p role="status">Checking your account…</p></Frame>;
+  const owner = session.userId === recoveryOwnerId;
+  return <RecoveryReviewWorkspace key={session.userId + ":" + session.accessToken} sessionToken={owner ? session.accessToken : ""} sessionEmail={owner ? session.email : ""} />;
+}
+
+function RecoveryReviewWorkspace({ sessionToken = "", sessionEmail = "" }: { sessionToken?: string; sessionEmail?: string }) {
+  const [token, setToken] = useState(sessionToken);
   const [entry, setEntry] = useState("");
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [search, setSearch] = useState("");
@@ -251,16 +265,19 @@ export function RecoveryReview() {
   const lock = useRef(false);
   const [declineId, setDeclineId] = useState<string | null>(null);
   const [notificationNotice, setNotificationNotice] = useState("");
+  const [tab, setTab] = useState("requests");
+  const actionAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => actionAbort.current?.abort(), []);
   useEffect(() => {
     function readToken() {
       const value = new URLSearchParams(window.location.hash.slice(1)).get("token") || "";
       if (window.location.hash) window.history.replaceState(null, "", window.location.pathname + window.location.search);
-      if (value) { visiblePages.current = 1; setNextCursor(null); setBookings([]); setLoaded(false); setError(""); setActionError(""); setNotificationNotice(""); setToken(value); setRefresh(v => v + 1); }
+      if (value && !sessionToken) { visiblePages.current = 1; setNextCursor(null); setBookings([]); setLoaded(false); setError(""); setActionError(""); setNotificationNotice(""); setToken(value); setRefresh(v => v + 1); }
     }
     Promise.resolve().then(readToken);
     window.addEventListener("hashchange", readToken);
     return () => window.removeEventListener("hashchange", readToken);
-  }, []);
+  }, [sessionToken]);
   useEffect(() => {
     if (!token) return;
     const controller = new AbortController();
@@ -289,12 +306,14 @@ export function RecoveryReview() {
   async function loadMore() {
     if (lock.current || busy || !token || !nextCursor) return;
     lock.current = true; setBusy(true); setLoadingMore(true); setError("");
+    const controller = new AbortController(); actionAbort.current = controller;
     try {
-      const page = await api<ReviewPage>(`admin?cursor=${encodeURIComponent(nextCursor)}`, { token });
+      const page = await api<ReviewPage>(`admin?cursor=${encodeURIComponent(nextCursor)}`, { token, signal: controller.signal });
+      if (controller.signal.aborted) return;
       setBookings(current => [...new Map([...current, ...page.bookings].map(booking => [booking.id, booking])).values()]);
       setNextCursor(page.next_cursor || null); visiblePages.current += 1;
-    } catch (e) { setError(message(e)); }
-    finally { lock.current = false; setBusy(false); setLoadingMore(false); }
+    } catch (e) { if (!controller.signal.aborted) setError(message(e)); }
+    finally { lock.current = false; if (!controller.signal.aborted) { setBusy(false); setLoadingMore(false); } }
   }
   function notificationStatus(value: EmailStatus) {
     if (value.email_failed) return "Some email notifications could not be delivered. The booking is still saved.";
@@ -306,22 +325,26 @@ export function RecoveryReview() {
   async function review(bookingId: string, approve: boolean) {
     if (lock.current) return;
     lock.current = true; setBusy(true); setError(""); setActionError(""); setNotificationNotice("");
-    try { const response = await api<EmailStatus>("review", { token, body: { bookingId, approve } }); if (response.email_pending) setNotificationNotice(notificationStatus(response)); setDeclineId(null); setRefresh(v => v + 1); }
-    catch (e) { setActionError(message(e)); setRefresh(v => v + 1); }
-    finally { lock.current = false; setBusy(false); }
+    const controller = new AbortController(); actionAbort.current = controller;
+    try { const response = await api<EmailStatus>("review", { token, body: { bookingId, approve }, signal: controller.signal }); if (controller.signal.aborted) return; if (response.email_pending) setNotificationNotice(notificationStatus(response)); setDeclineId(null); setRefresh(v => v + 1); }
+    catch (e) { if (!controller.signal.aborted) { setActionError(message(e)); setRefresh(v => v + 1); } }
+    finally { lock.current = false; if (!controller.signal.aborted) setBusy(false); }
   }
   async function checkNotifications(bookingId: string) {
     if (lock.current) return;
     lock.current = true; setBusy(true); setError(""); setActionError(""); setNotificationNotice("");
-    try { const response = await api<EmailStatus>("notifications", { token, body: { bookingId } }); setNotificationNotice(notificationStatus(response)); setRefresh(v => v + 1); }
-    catch (e) { setActionError(message(e)); }
-    finally { lock.current = false; setBusy(false); }
+    const controller = new AbortController(); actionAbort.current = controller;
+    try { const response = await api<EmailStatus>("notifications", { token, body: { bookingId }, signal: controller.signal }); if (controller.signal.aborted) return; setNotificationNotice(notificationStatus(response)); setRefresh(v => v + 1); }
+    catch (e) { if (!controller.signal.aborted) setActionError(message(e)); }
+    finally { lock.current = false; if (!controller.signal.aborted) setBusy(false); }
   }
   async function reschedule(bookingId: string, startsAt: string, operationId: string) {
     if (lock.current) return false;
     lock.current = true; setBusy(true); setError(""); setActionError(""); setNotificationNotice("");
+    const controller = new AbortController(); actionAbort.current = controller;
     try {
-      const response = await api<{ booking: Booking } & EmailStatus>("reschedule", { token, body: { bookingId, startsAt, operationId } });
+      const response = await api<{ booking: Booking } & EmailStatus>("reschedule", { token, body: { bookingId, startsAt, operationId }, signal: controller.signal });
+      if (controller.signal.aborted) return false;
       setBookings(current => current.map(booking => booking.id === bookingId ? {
         ...booking,
         ...response.booking,
@@ -332,17 +355,21 @@ export function RecoveryReview() {
       } : booking));
       if (response.email_pending) setNotificationNotice(notificationStatus(response));
       return true;
-    } catch (e) { setActionError(message(e)); return false; }
-    finally { lock.current = false; setBusy(false); setRefresh(v => v + 1); }
+    } catch (e) { if (!controller.signal.aborted) setActionError(message(e)); return false; }
+    finally { lock.current = false; if (!controller.signal.aborted) { setBusy(false); setRefresh(v => v + 1); } }
   }
   const matches = bookings.filter(booking => bookingMatchesSearch(booking, search));
-  return <Frame title="Review booking requests"><p className="mb-5">Approve a request to confirm the time and create its Google Meet link.</p><p className="mb-5 text-sm"><Link className="underline underline-offset-4" href="/account/sign-in/">Consultant or client account? Sign in here.</Link></p><Notice text={actionError || error} />{notificationNotice && <p role="status" className="mb-5 rounded-xl bg-secondary p-4 text-sm">{notificationNotice}</p>}{!token ? <form className="space-y-4 rounded-2xl border border-border p-6" onSubmit={e => { e.preventDefault(); if (entry.trim()) { setActionError(""); setToken(entry.trim()); setEntry(""); } }}><label className="block space-y-2"><span>Private access key</span><Input type="password" value={entry} onChange={e => setEntry(e.target.value)} autoComplete="off" required /></label><p className="text-sm">Use your private owner key. Don’t share it with clients.</p><Button type="submit">Open requests</Button></form> : <>
-    <div className="mb-5 flex flex-wrap gap-3"><Button disabled={busy} variant="outline" onClick={() => setRefresh(v => v + 1)}>{busy && !loadingMore ? "Refreshing…" : "Refresh requests"}</Button><Button variant="ghost" disabled={busy} onClick={() => { setToken(""); setSearch(""); setBookings([]); setLoaded(false); setNextCursor(null); visiblePages.current = 1; setError(""); setActionError(""); setNotificationNotice(""); }}>Lock page</Button></div>
+  return <Frame title={sessionToken ? "Your Studio" : "Review booking requests"}>
+    {sessionToken ? <><div className="mb-5 flex flex-wrap items-center gap-4 text-sm"><span>{sessionEmail}</span><Link className="underline" href="/logout/?from=consultant">Sign out</Link><Link className="underline" href="/book/4u-digital/">View booking page</Link></div><nav aria-label="Studio sections" className="mb-6 flex flex-wrap gap-3">{[["requests", "Requests"], ["settings", "Booking settings"], ["history", "Earlier appointments"]].map(([value, label]) => <Button key={value} variant={tab === value ? "default" : "outline"} aria-pressed={tab === value} disabled={busy} onClick={() => setTab(value)}>{label}</Button>)}</nav></> : <p className="mb-5"><Link className="underline underline-offset-4" href="/account/sign-in/">Sign in to your account</Link> to open your Studio. Your existing private owner key also remains available below.</p>}
+    {sessionToken && tab === "settings" && <RecoveryOwnerSettings token={sessionToken} />}
+    {sessionToken && tab === "history" && <RecoveryLegacyHistory />}
+    {(!sessionToken || tab === "requests") && <><p className="mb-5">Approve a request to confirm the time and create its Google Meet link.</p><Notice text={actionError || error} />{notificationNotice && <p role="status" className="mb-5 rounded-xl bg-secondary p-4 text-sm">{notificationNotice}</p>}{!token ? <form className="space-y-4 rounded-2xl border border-border p-6" onSubmit={e => { e.preventDefault(); if (entry.trim()) { setActionError(""); setToken(entry.trim()); setEntry(""); } }}><label className="block space-y-2"><span>Private access key</span><Input type="password" value={entry} onChange={e => setEntry(e.target.value)} autoComplete="off" required /></label><p className="text-sm">Use your private owner key. Don’t share it with clients.</p><Button type="submit">Open requests</Button></form> : <>
+    <div className="mb-5 flex flex-wrap gap-3"><Button disabled={busy} variant="outline" onClick={() => setRefresh(v => v + 1)}>{busy && !loadingMore ? "Refreshing…" : "Refresh requests"}</Button>{!sessionToken && <Button variant="ghost" disabled={busy} onClick={() => { setToken(""); setSearch(""); setBookings([]); setLoaded(false); setNextCursor(null); visiblePages.current = 1; setError(""); setActionError(""); setNotificationNotice(""); }}>Lock page</Button>}</div>
     <label className="mb-5 block space-y-2"><span>Search loaded requests</span><Input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Name, email, or booking ID" autoComplete="off" /></label>
     {loaded && search.trim() && !matches.length && <p role="status">No matching requests in the loaded results.{nextCursor ? " Load more requests to search earlier bookings." : ""}</p>}
     {busy && !loaded && <p role="status">Loading requests…</p>}{loaded && !bookings.length && <p>No booking requests yet.</p>}
     <div className="space-y-5">{matches.map(booking => <article key={booking.id} className="space-y-3 rounded-2xl border border-border p-5"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-lg font-semibold">{booking.client_name || "Reserved time"}</h2><span className="rounded-full bg-accent px-3 py-1 text-sm">{bookingStatus(booking)}</span></div>{booking.client_email && <p className="break-all">{booking.client_email}</p>}<p>{booking.title || booking.service_title || "Consultation"} · {stamp(booking.starts_at, booking.timezone)}</p>{booking.notes && <details><summary className="cursor-pointer underline underline-offset-4">Project details</summary><p className="mt-3 whitespace-pre-wrap break-words text-sm">{booking.notes}</p></details>}
-      {booking.source === "supabase" ? <p className="text-sm">Existing reservation. Manage this appointment through its original booking record.</p> : <>
+      {booking.source === "supabase" ? <div className="space-y-2"><p className="text-sm">Existing reservation from an earlier appointment.</p>{sessionToken ? <Button variant="outline" onClick={() => setTab("history")}>Open earlier appointments</Button> : <Link href="/account/sign-in/" className="underline">Sign in to view the original appointment</Link>}</div> : <>
         {booking.email_pending && <div className="space-y-3 rounded-xl bg-secondary p-4"><p className="text-sm">{notificationStatus(booking)}</p><Button variant="outline" disabled={busy} onClick={() => checkNotifications(booking.id)}>{booking.email_queued ? "Retry queued emails" : "Check email delivery"}</Button></div>}
         {booking.status === "confirming" && booking.meeting_error === "google_meet_failed" && <p className="text-sm">Google could not create the Meet link. Cancel this request and ask the client to request another time.</p>}
         {["pending_approval", "confirming"].includes(booking.status) && <div className="flex flex-wrap gap-3">{(booking.status === "pending_approval" || booking.meeting_error !== "google_meet_failed") && <Button disabled={busy} onClick={() => review(booking.id, true)}>{booking.status === "confirming" ? "Retry Google Meet setup" : "Approve & create Google Meet"}</Button>}<Button disabled={busy} variant="outline" onClick={() => setDeclineId(booking.id)}>{booking.status === "pending_approval" ? "Decline" : "Cancel request"}</Button></div>}
@@ -353,7 +380,7 @@ export function RecoveryReview() {
     </article>)}</div>
     {bookings.length > 0 && <p className="mt-5 text-sm" role="status">Showing {matches.length} of {bookings.length} loaded {bookings.length === 1 ? "request" : "requests"}{nextCursor ? ". More requests are available." : "."}</p>}
     {nextCursor && <Button className="mt-4" variant="outline" disabled={busy} onClick={loadMore}>{loadingMore ? "Loading more requests…" : "Load more requests"}</Button>}
-  </>}</Frame>;
+  </>}</>}</Frame>;
 }
 
 function RecoveryReschedule({ booking, token, busy, apply }: { booking: Booking; token: string; busy: boolean; apply: (startsAt: string, operationId: string) => Promise<boolean> }) {

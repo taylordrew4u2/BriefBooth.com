@@ -1,6 +1,5 @@
 "use client";
-import {Suspense,useEffect,useState} from 'react';
-import {useSearchParams} from 'next/navigation';
+import {useEffect,useState} from 'react';
 import Link from 'next/link';
 import {Logo} from '@/components/site-header';
 import {Button} from '@/components/ui/button';
@@ -8,14 +7,11 @@ import {Input} from '@/components/ui/input';
 import {db,configured} from '@/lib/supabase';
 import styles from './client.module.css';
 import {IntakeEditor} from './intake-editor';
-import {RecoveryAccountLinks} from '@/components/recovery-account-links';
+import {AccountBookings} from '@/components/account-bookings';
 type Booking={id:string;title:string;consultant:string;starts_at:string;status:string;manage_token:string};
 export default function ClientAccount(){
  if(process.env.NEXT_PUBLIC_BOOKING_RECOVERY!=='1')return <LegacyClientAccount/>;
- return <Suspense fallback={<RecoveryAccountLinks view="client"/>}><ClientIntent/></Suspense>;
-}
-function ClientIntent(){
- return useSearchParams().get('workspace')==='account'?<LegacyClientAccount/>:<RecoveryAccountLinks view="client"/>;
+ return <AccountBookings/>;
 }
 function LegacyClientAccount(){
  const [now,setNow]=useState(0);

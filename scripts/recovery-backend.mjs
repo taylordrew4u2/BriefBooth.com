@@ -7,14 +7,14 @@ const ACTIVE="'pending_approval','confirming','confirmed','cancelling'";
 const RESCHEDULE_JSON=`SELECT json_object('operation_id',r.operation_id,'starts_ms',r.starts_ms,'ends_ms',r.ends_ms,'state',r.state) FROM recovery_reschedule_operations r WHERE r.booking_id=b.id AND r.state IN ('reserved','applying') LIMIT 1`;
 const uuid=value=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const encoder=new TextEncoder();
-class HttpError extends Error {constructor(status,message){super(message);this.status=status;}}
-const fail=(status,message)=>{throw new HttpError(status,message);};
+class HttpError extends Error {constructor(status,message,code){super(message);this.status=status;this.code=code;}}
+const fail=(status,message,code)=>{throw new HttpError(status,message,code);};
 function json(data,status=200){return Response.json(data,{status,headers:{'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'}});}
 async function digest(value){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(value)))].map(x=>x.toString(16).padStart(2,'0')).join('');}
 function equal(a,b){if(typeof a!=='string'||typeof b!=='string'||a.length!==b.length)return false;let n=0;for(let i=0;i<a.length;i++)n|=a.charCodeAt(i)^b.charCodeAt(i);return n===0;}
 function bearer(request){return request.headers.get('authorization')?.match(/^Bearer ([^\s]+)$/)?.[1]||'';}
 async function capability(env,id,requestId){const key=await crypto.subtle.importKey('raw',encoder.encode(env.RECOVERY_CAPABILITY_SECRET),{name:'HMAC',hash:'SHA-256'},false,['sign']);const bytes=new Uint8Array(await crypto.subtle.sign('HMAC',key,encoder.encode(`manage:${id}:${requestId}`)));return id+'.'+btoa(String.fromCharCode(...bytes)).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'');}
-function configuration(env){
+function environmentConfiguration(env){
  let c;try{c=JSON.parse(env.RECOVERY_CONFIG_JSON);}catch{fail(503,'Booking is not ready yet. Please try again later.');}
  if(!env.RECOVERY_DB||!env.RECOVERY_CAPABILITY_SECRET||env.RECOVERY_CAPABILITY_SECRET.length<32||c?.profile?.slug!=='4u-digital'||!c.profile.id||!Array.isArray(c.services)||!Array.isArray(c.availability))fail(503,'Booking is not ready yet. Please try again later.');
  if(!/^[0-9a-f]{64}$/i.test(env.RECOVERY_OWNER_TOKEN_SHA256||'')||!/^\S+@[^\s@]+\.[^\s@]+$/.test(env.RECOVERY_OWNER_EMAIL||'')||!env.BREVO_API_KEY||!env.GOOGLE_CLIENT_ID||!env.GOOGLE_CLIENT_SECRET||!env.GOOGLE_REFRESH_TOKEN)fail(503,'Booking is not ready yet. Please try again later.');
@@ -22,10 +22,62 @@ function configuration(env){
  try{new Intl.DateTimeFormat('en-US',{timeZone:c.profile.timezone}).format(new Date());}catch{fail(503,'Booking is not ready yet. Please try again later.');}
  c.preferences={notice_hours:2,horizon_days:60,buffer_minutes:0,...c.preferences};
  for(const [key,min,max] of [['notice_hours',0,168],['horizon_days',1,60],['buffer_minutes',0,120]])if(!Number.isInteger(c.preferences[key])||c.preferences[key]<min||c.preferences[key]>max)fail(503,'Booking is not ready yet. Please try again later.');
- c.services=c.services.filter(s=>s.active===true&&s.amount_cents===0&&s.meeting_modes?.includes('google_meet')&&Number.isInteger(s.duration)&&s.duration>=15&&s.duration<=120);
+ c.services=c.services.filter(s=>s.amount_cents===0&&s.meeting_modes?.includes('google_meet')&&Number.isInteger(s.duration)&&s.duration>=15&&s.duration<=120);
  return c;
 }
-function service(config,id){const s=config.services.find(s=>s.id===id);if(!s)fail(404,'This consultation is unavailable.');return s;}
+async function configuration(env){
+ const initial=environmentConfiguration(env);
+ let row=await env.RECOVERY_DB.prepare('SELECT config_json,revision FROM recovery_configuration WHERE owner_id=?').bind(initial.profile.id).first();
+ if(!row){
+  // Preserve the effective public description used before editable settings.
+  // The environment is a bootstrap snapshot only; it never overwrites saved data.
+  initial.services=initial.services.map(s=>({...s,description:'I build websites for businesses and people, from personal portfolios to online stores and booking sites. I also build apps and custom software.'}));
+  await env.RECOVERY_DB.prepare('INSERT OR IGNORE INTO recovery_configuration(owner_id,revision,config_json,updated_ms,updated_by) VALUES(?,1,?,?,?)').bind(initial.profile.id,JSON.stringify(initial),Date.now(),'bootstrap').run();
+  row=await env.RECOVERY_DB.prepare('SELECT config_json,revision FROM recovery_configuration WHERE owner_id=?').bind(initial.profile.id).first();
+ }
+ let saved;try{saved=JSON.parse(row.config_json);}catch{fail(503,'Booking settings are unavailable. Please try again later.');}
+ if(saved.profile?.id!==initial.profile.id||saved.profile?.slug!=='4u-digital'||saved.profile?.booking_mode!=='approval')fail(503,'Booking settings could not be verified.');
+ return {...saved,revision:row.revision};
+}
+function service(config,id,existing=false){const s=config.services.find(s=>s.id===id);if(!s||(!existing&&s.active!==true))fail(404,'This consultation is unavailable.');return s;}
+
+function fields(value,allowed,label){if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!allowed.includes(k)))fail(400,'Check '+label+'.');}
+function settingText(value,label,min,max,multiline=false){if(typeof value!=='string'||value.trim().length<min||value.trim().length>max||(!multiline&&/[\r\n]/.test(value))||/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value))fail(400,'Check '+label+'.');return value.trim();}
+function editedConfiguration(current,input){
+ fields(input,['revision','profile','services','availability','preferences'],'booking settings');
+ if(!Number.isSafeInteger(input.revision)||input.revision<1)fail(400,'Refresh the settings before saving.');
+ const next=structuredClone(current);delete next.revision;
+ fields(input.profile,['name','headline','bio','timezone'],'profile');
+ next.profile={...next.profile,name:settingText(input.profile.name,'display name',1,120),headline:settingText(input.profile.headline,'headline',0,200),bio:settingText(input.profile.bio,'introduction',0,4000,true),timezone:settingText(input.profile.timezone,'timezone',1,100)};
+ try{new Intl.DateTimeFormat('en-US',{timeZone:next.profile.timezone}).format(new Date());}catch{fail(400,'Choose a valid timezone.');}
+ if(!Array.isArray(input.services)||input.services.length!==current.services.length||new Set(input.services.map(s=>s?.id)).size!==current.services.length)fail(400,'Keep the existing consultation IDs; hide a consultation instead of deleting it.');
+ next.services=input.services.map(s=>{
+  fields(s,['id','title','description','duration','active'],'consultation');
+  const existing=current.services.find(x=>x.id===s.id);
+  if(!existing||!Number.isInteger(s.duration)||s.duration<15||s.duration>120||typeof s.active!=='boolean')fail(400,'Check the consultation duration and availability.');
+  return {...existing,title:settingText(s.title,'consultation title',1,160),description:settingText(s.description,'consultation description',0,2000,true),duration:s.duration,active:s.active,amount_cents:0,meeting_modes:['google_meet']};
+ });
+ if(!Array.isArray(input.availability)||input.availability.length>7)fail(400,'Use at most one availability window per weekday.');
+ const days=new Set();next.availability=input.availability.map(a=>{
+  fields(a,['weekday','start_time','end_time'],'weekly hours');
+  if(!Number.isInteger(a.weekday)||a.weekday<0||a.weekday>6||days.has(a.weekday)||typeof a.start_time!=='string'||typeof a.end_time!=='string'||!/^([01]\d|2[0-3]):[0-5]\d(:00)?$/.test(a.start_time)||!/^([01]\d|2[0-3]):[0-5]\d(:00)?$/.test(a.end_time)||a.start_time.slice(0,5)>=a.end_time.slice(0,5))fail(400,'Check weekly hours and duplicate weekdays.');
+  days.add(a.weekday);return {...current.availability.find(x=>x.weekday===a.weekday),weekday:a.weekday,start_time:a.start_time.slice(0,5),end_time:a.end_time.slice(0,5)};
+ });
+ fields(input.preferences,['notice_hours','horizon_days','buffer_minutes'],'booking rules');
+ for(const [key,min,max] of [['notice_hours',0,168],['horizon_days',1,60],['buffer_minutes',0,120]]){
+  if(!Number.isInteger(input.preferences[key])||input.preferences[key]<min||input.preferences[key]>max)fail(400,'Check '+key.replaceAll('_',' ')+'.');
+  next.preferences[key]=input.preferences[key];
+ }
+ return next;
+}
+function ownerConfiguration(config){const {revision,...value}=config;return {config:value,revision,calendar:{configured:true,provider:'google_meet'}};}
+async function saveConfiguration(request,env,config,input){
+ const identity=await owner(request,env,config),next=editedConfiguration(config,input);
+ if(input.revision!==config.revision)fail(409,'Booking settings changed in another window. Reload the current settings before saving again.');
+ const saved=await env.RECOVERY_DB.prepare('UPDATE recovery_configuration SET config_json=?,revision=revision+1,updated_ms=?,updated_by=? WHERE owner_id=? AND revision=? RETURNING revision').bind(JSON.stringify(next),Date.now(),identity.kind+':'+identity.id,config.profile.id,input.revision).first();
+ if(!saved)fail(409,'Booking settings changed in another window. Reload the current settings before saving again.');
+ return json(ownerConfiguration({...next,revision:saved.revision}));
+}
 const dateFormatters=new Map();
 function localParts(ms,timezone){let formatter=dateFormatters.get(timezone);if(!formatter){formatter=new Intl.DateTimeFormat('en-CA',{timeZone:timezone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});dateFormatters.set(timezone,formatter);}const parts=formatter.formatToParts(new Date(ms));const p=Object.fromEntries(parts.filter(x=>x.type!=='literal').map(x=>[x.type,x.value]));return {day:`${p.year}-${p.month}-${p.day}`,time:`${p.hour}:${p.minute}`,year:+p.year,month:+p.month,date:+p.day,hour:+p.hour,minute:+p.minute,second:+p.second};}
 function localInstant(day,time,zone){
@@ -50,8 +102,46 @@ async function rate(request,env,kind,limit,windowMs,identity){
  if(now%32===0)await env.RECOVERY_DB.prepare('DELETE FROM recovery_rate_limits WHERE bucket IN (SELECT bucket FROM recovery_rate_limits WHERE expires_ms<? LIMIT 100)').bind(now).run();
 }
 async function body(request){const size=Number(request.headers.get('content-length')||0);if(size>20000)fail(413,'Your request is too large.');if(!request.headers.get('content-type')?.toLowerCase().startsWith('application/json'))fail(415,'Use a JSON request.');const raw=await request.text();if(encoder.encode(raw).length>20000)fail(413,'Your request is too large.');try{const b=JSON.parse(raw);if(!b||typeof b!=='object'||Array.isArray(b))throw Error();return b;}catch{fail(400,'This request could not be read.');}}
-async function owner(request,env){await rate(request,env,'owner',30,15*MINUTE);const token=bearer(request);if(token.length<32||token.length>512||!equal(await digest(token),env.RECOVERY_OWNER_TOKEN_SHA256))fail(401,'Enter the private review key to continue.');}
-async function managed(request,env){const token=bearer(request);if(token.length<50||token.length>150)fail(404,'This booking link is unavailable.');const hash=await digest(token);const row=await env.RECOVERY_DB.prepare(`SELECT b.*, (${RESCHEDULE_JSON}) AS reschedule_json FROM recovery_bookings b WHERE client_token_hash=? AND source='recovery'`).bind(hash).first();if(!row)fail(404,'This booking link is unavailable.');return row;}
+async function sessionIdentity(request,env){
+ const token=bearer(request);
+ if(token.length>8192||!/^[-_A-Za-z0-9]+\.[-_A-Za-z0-9]+\.[-_A-Za-z0-9]+$/.test(token))fail(401,'Sign in to your account to continue.');
+ const base=env.RECOVERY_SUPABASE_URL||process.env.NEXT_PUBLIC_SUPABASE_URL;
+ const key=env.RECOVERY_SUPABASE_PUBLISHABLE_KEY||process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+ let url;try{url=new URL(base);if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||url.pathname!=='/')throw Error();}catch{fail(503,'Account verification is temporarily unavailable.');}
+ if(!key)fail(503,'Account verification is temporarily unavailable.');
+ // Auth validates the token against this one configured project. Client claims,
+ // editable metadata, email input and UI routing never grant owner access.
+ let response;try{response=await fetch(new URL('/auth/v1/user',url),{headers:{apikey:key,Authorization:'Bearer '+token},redirect:'error',signal:AbortSignal.timeout(8000)});}catch{fail(503,'Account verification is temporarily unavailable.');}
+ if(!response.ok){if([400,401,403].includes(response.status))fail(401,'Your sign-in has expired. Sign in again.');fail(503,'Account verification is temporarily unavailable.');}
+ let user;try{user=await response.json();}catch{fail(503,'Account verification is temporarily unavailable.');}
+ const email=typeof user?.email==='string'?user.email.trim().toLowerCase():'';
+ if(!uuid(user?.id)||user.is_anonymous===true||user.aud!=='authenticated'||!user.email_confirmed_at||!Number.isFinite(Date.parse(user.email_confirmed_at))||email.length>254||!/^\S+@[^\s@]+\.[^\s@]+$/.test(email))fail(401,'Confirm your account email before continuing.');
+ return {kind:'session',id:user.id,email};
+}
+async function owner(request,env,config){
+ await rate(request,env,'owner',30,15*MINUTE);const token=bearer(request);
+ if(token.length>=32&&token.length<=512&&equal(await digest(token),env.RECOVERY_OWNER_TOKEN_SHA256))return {kind:'key',id:config.profile.id};
+ const identity=await sessionIdentity(request,env);
+ if(identity.id!==config.profile.id)fail(403,'This account does not manage 4u Digital bookings.');
+ return identity;
+}
+async function managed(request,env,config,bookingId){
+ if(bookingId!==undefined){
+  if(!uuid(bookingId))fail(404,'This booking is unavailable.');
+  const identity=await sessionIdentity(request,env);
+  const row=await env.RECOVERY_DB.prepare(`SELECT b.*, (${RESCHEDULE_JSON}) AS reschedule_json FROM recovery_bookings b WHERE id=? AND owner_id=? AND client_email=? AND source='recovery'`).bind(bookingId,config.profile.id,identity.email).first();
+  if(!row)fail(404,'This booking is unavailable.');return row;
+ }
+ const token=bearer(request);if(token.length<50||token.length>150)fail(404,'This booking link is unavailable.');const hash=await digest(token);const row=await env.RECOVERY_DB.prepare(`SELECT b.*, (${RESCHEDULE_JSON}) AS reschedule_json FROM recovery_bookings b WHERE client_token_hash=? AND owner_id=? AND source='recovery'`).bind(hash,config.profile.id).first();if(!row)fail(404,'This booking link is unavailable.');return row;
+}
+async function clientBookings(request,env,config,url){
+ await rate(request,env,'client-history',60,MINUTE);const identity=await sessionIdentity(request,env),cursor=readAdminCursor(url.searchParams.get('cursor'));
+ const where=cursor?' AND (b.created_ms,b.id)<(?,?)':'';
+ const params=cursor?[config.profile.id,identity.email,cursor[0],cursor[1]]:[config.profile.id,identity.email];
+ const {results}=await env.RECOVERY_DB.prepare(`SELECT b.*, (${RESCHEDULE_JSON}) AS reschedule_json FROM recovery_bookings b WHERE b.owner_id=? AND b.client_email=? AND b.source='recovery'${where} ORDER BY b.created_ms DESC,b.id DESC LIMIT 101`).bind(...params).all();
+ const page=results.slice(0,100);
+ return json({bookings:page.map(row=>safeBooking(row,config)),next_cursor:results.length>100?nextAdminCursor(page.at(-1)):null});
+}
 let tokenCache;
 async function accessToken(env){
  if(!env.GOOGLE_CLIENT_ID||!env.GOOGLE_CLIENT_SECRET||!env.GOOGLE_REFRESH_TOKEN)fail(503,'Calendar connection is unavailable. No booking was confirmed.');
@@ -88,21 +178,23 @@ function nextAdminCursor(row){return btoa(JSON.stringify([row.created_ms,row.id]
 async function queue(env,row,kind,recipient,subject,text){if(!recipient)return;const version=row.notification_version||0;await env.RECOVERY_DB.prepare('INSERT OR IGNORE INTO recovery_emails(id,booking_id,kind,recipient,subject,body,created_ms,booking_version) SELECT ?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM recovery_bookings WHERE id=? AND status=? AND notification_version=?)').bind(`${row.id}:${kind}${version?':v'+version:''}`,row.id,kind,recipient,subject,text,Date.now(),version,row.id,row.status,version).run();}
 async function pendingMail(env,row,config,token){const when=new Date(row.starts_ms).toLocaleString('en-US',{timeZone:config.profile.timezone,dateStyle:'full',timeStyle:'short'});const details=`${row.title}\n${when} (${config.profile.timezone})\nConsultant: ${config.profile.name}`;const link=`https://briefbooth.com/booking-status/#token=${encodeURIComponent(token)}`;
  await queue(env,row,'request_client',row.client_email,'Consultation request received — awaiting approval',`Your request is saved and awaiting consultant approval. This is not a confirmed appointment.\n\n${details}\n\nView or cancel your request using this private link:\n${link}`);
- await queue(env,row,'request_owner',env.RECOVERY_OWNER_EMAIL,'New consultation request — approval needed',`${row.client_name} (${row.client_email}) requested:\n${details}\n\n${row.notes}\n\nReview this request inside BriefBooth:\nhttps://briefbooth.com/booking-review/\nUse your private review key. This request is not confirmed.`);
+ await queue(env,row,'request_owner',env.RECOVERY_OWNER_EMAIL,'New consultation request — approval needed',`${row.client_name} (${row.client_email}) requested:\n${details}\n\n${row.notes}\n\nReview this request inside BriefBooth:\nhttps://briefbooth.com/studio/\nSign in with your 4u Digital account to review requests. This request is not confirmed.`);
 }
 async function statusMail(env,row,config){await env.RECOVERY_DB.prepare("UPDATE recovery_emails SET state='superseded' WHERE booking_id=? AND state='queued' AND (kind NOT LIKE ? OR booking_version<>?) AND EXISTS(SELECT 1 FROM recovery_bookings WHERE id=recovery_emails.booking_id AND status=? AND notification_version=?)").bind(row.id,row.status+'_%',row.notification_version||0,row.status,row.notification_version||0).run();const token=await capability(env,row.id,row.request_id);const link=`https://briefbooth.com/booking-status/#token=${encodeURIComponent(token)}`;const when=new Date(row.starts_ms).toLocaleString('en-US',{timeZone:config.profile.timezone,dateStyle:'full',timeStyle:'short'});const confirmed=row.status==='confirmed'&&row.meeting_url;const label=confirmed?'confirmed':row.status==='declined'?'declined':'cancelled';const announced=confirmed&&row.notification_version>0?'rescheduled':label;const text=`Your consultation is ${announced}.\n\n${row.title}\n${when} (${config.profile.timezone})\nConsultant: ${config.profile.name}\n${confirmed?'Google Meet: '+row.meeting_url+'\n':''}\nPrivate booking status:\n${link}`;
  await queue(env,row,label+'_client',row.client_email,`Your BriefBooth consultation is ${announced}`,text);
- await queue(env,row,label+'_owner',env.RECOVERY_OWNER_EMAIL,`BriefBooth consultation ${announced}`,`${row.client_name} (${row.client_email})\n${text}\n\nReview appointments: https://briefbooth.com/booking-review/`);
+ await queue(env,row,label+'_owner',env.RECOVERY_OWNER_EMAIL,`BriefBooth consultation ${announced}`,`${row.client_name} (${row.client_email})\n${text}\n\nReview appointments: https://briefbooth.com/studio/\nSign in with your 4u Digital account.`);
 }
-async function book(request,env,config,input,ctx){const v=validation(config,input),svc=service(config,input.serviceId);const end=v.starts+svc.duration*MINUTE;const fingerprint=await digest(JSON.stringify([svc.id,v.starts,v.name,v.email,v.notes]));
+async function book(request,env,config,input,ctx){const v=validation(config,input),svc=service(config,input.serviceId,true);const end=v.starts+svc.duration*MINUTE;const fingerprint=await digest(JSON.stringify([svc.id,v.starts,v.name,v.email,v.notes]));
  const previous=await env.RECOVERY_DB.prepare('SELECT * FROM recovery_bookings WHERE request_id=?').bind(v.requestId).first();
  if(previous){if(!equal(previous.request_hash,fingerprint))fail(409,'This request was already used for another booking. Refresh before booking again.');const token=await capability(env,previous.id,previous.request_id);if(previous.status==='pending_approval')await pendingMail(env,previous,config,token);else if(['confirmed','cancelled','declined'].includes(previous.status))await statusMail(env,previous,config);await deliver(env,previous.id,ctx);return json({token,status:previous.status,bookingId:previous.id,...await recoveryMailFlags(env,previous.id,true)});}
+ if(input.configRevision!==config.revision)fail(409,'Booking details changed. Reload the current details and choose a time before sending your request.','config_changed');
+ if(svc.active!==true)fail(404,'This consultation is unavailable.');
  await rate(request,env,'book',8,60*MINUTE);await rate(request,env,'emailbook',3,60*MINUTE,v.email);
  const day=localParts(v.starts,config.profile.timezone).day;if(!schedule(config,svc,day,Date.now()).includes(v.starts))fail(409,'That appointment time is no longer available. Choose another time.');
  const buffer=config.preferences.buffer_minutes*MINUTE;const periods=await busy(env,v.starts-buffer,end+buffer);if(periods.some(p=>overlap(v.starts,end,p.start,p.end,buffer)))fail(409,'That appointment time is no longer available. Choose another time.');
  const id=crypto.randomUUID(),token=await capability(env,id,v.requestId),hash=await digest(token),now=Date.now();
- const result=await env.RECOVERY_DB.prepare(`INSERT OR IGNORE INTO recovery_bookings(id,owner_id,service_id,title,starts_ms,ends_ms,client_name,client_email,notes,status,request_id,request_hash,client_token_hash,created_ms,updated_ms) SELECT ?,?,?,?,?,?,?,?,?,'pending_approval',?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM recovery_bookings WHERE owner_id=? AND status IN (${ACTIVE}) AND starts_ms<? AND ends_ms>?) AND NOT EXISTS(SELECT 1 FROM recovery_reschedule_operations r JOIN recovery_bookings b ON b.id=r.booking_id WHERE b.owner_id=? AND b.status IN (${ACTIVE}) AND r.state IN ('reserved','applying') AND r.starts_ms<? AND r.ends_ms>?) RETURNING *`).bind(id,config.profile.id,svc.id,svc.title,v.starts,end,v.name,v.email,v.notes,v.requestId,fingerprint,hash,now,now,config.profile.id,end+buffer,v.starts-buffer,config.profile.id,end+buffer,v.starts-buffer).first();
- if(!result){const collision=await env.RECOVERY_DB.prepare('SELECT * FROM recovery_bookings WHERE request_id=?').bind(v.requestId).first();if(collision&&equal(collision.request_hash,fingerprint)){const stable=await capability(env,collision.id,collision.request_id);return json({token:stable,status:collision.status,bookingId:collision.id,...await recoveryMailFlags(env,collision.id,true)});}fail(409,'That appointment time has just been taken. Choose another time.');}
+ const result=await env.RECOVERY_DB.prepare(`INSERT OR IGNORE INTO recovery_bookings(id,owner_id,service_id,title,starts_ms,ends_ms,client_name,client_email,notes,status,request_id,request_hash,client_token_hash,created_ms,updated_ms) SELECT ?,?,?,?,?,?,?,?,?,'pending_approval',?,?,?,?,? WHERE EXISTS(SELECT 1 FROM recovery_configuration WHERE owner_id=? AND revision=?) AND NOT EXISTS(SELECT 1 FROM recovery_bookings WHERE owner_id=? AND status IN (${ACTIVE}) AND starts_ms<? AND ends_ms>?) AND NOT EXISTS(SELECT 1 FROM recovery_reschedule_operations r JOIN recovery_bookings b ON b.id=r.booking_id WHERE b.owner_id=? AND b.status IN (${ACTIVE}) AND r.state IN ('reserved','applying') AND r.starts_ms<? AND r.ends_ms>?) RETURNING *`).bind(id,config.profile.id,svc.id,svc.title,v.starts,end,v.name,v.email,v.notes,v.requestId,fingerprint,hash,now,now,config.profile.id,config.revision,config.profile.id,end+buffer,v.starts-buffer,config.profile.id,end+buffer,v.starts-buffer).first();
+ if(!result){const collision=await env.RECOVERY_DB.prepare('SELECT * FROM recovery_bookings WHERE request_id=?').bind(v.requestId).first();if(collision&&equal(collision.request_hash,fingerprint)){const stable=await capability(env,collision.id,collision.request_id);return json({token:stable,status:collision.status,bookingId:collision.id,...await recoveryMailFlags(env,collision.id,true)});}const current=await env.RECOVERY_DB.prepare('SELECT revision FROM recovery_configuration WHERE owner_id=?').bind(config.profile.id).first();if(current?.revision!==config.revision)fail(409,'Booking details changed. Reload the current details and choose a time before sending your request.','config_changed');fail(409,'That appointment time has just been taken. Choose another time.');}
  await pendingMail(env,result,config,token);await deliver(env,id,ctx);return json({token,status:result.status,bookingId:id,...await recoveryMailFlags(env,id,true)},201);
 }
 async function lease(env,id){const nonce=crypto.randomUUID();const row=await env.RECOVERY_DB.prepare("UPDATE recovery_bookings SET action_nonce=?,action_until=? WHERE id=? AND source='recovery' AND action_until<? RETURNING *").bind(nonce,Date.now()+120000,id,Date.now()).first();if(!row)fail(409,'This booking is already being updated. Please try again shortly.');const active=await env.RECOVERY_DB.prepare(`SELECT (${RESCHEDULE_JSON}) AS reschedule_json FROM recovery_bookings b WHERE id=?`).bind(id).first();row.reschedule_json=active?.reschedule_json;return {row,nonce};}
@@ -111,7 +203,7 @@ async function transition(env,id,nonce,expected,status,extra={}){const now=Date.
 async function release(env,id,nonce){await env.RECOVERY_DB.prepare('UPDATE recovery_bookings SET action_nonce=NULL,action_until=0 WHERE id=? AND action_nonce=?').bind(id,nonce).run();}
 function eventId(id){return 'bb'+id.replaceAll('-','').toLowerCase();}
 function meetingUrl(event){const url=event.conferenceData?.entryPoints?.find(x=>x.entryPointType==='video')?.uri;return typeof url==='string'&&/^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}$/.test(url)?url:null;}
-async function review(request,env,config,input,ctx){await owner(request,env);if(typeof input.bookingId!=='string'||typeof input.approve!=='boolean')fail(400,'Choose a request to review.');const existing=await env.RECOVERY_DB.prepare('SELECT * FROM recovery_bookings WHERE id=? AND owner_id=?').bind(input.bookingId,config.profile.id).first();if(!existing)fail(404,'Booking not found.');if(existing.source!=='recovery')fail(409,'This appointment belongs to the previous booking system.');if(!input.approve&&['confirmed','confirming','cancelling','cancelled'].includes(existing.status))return cancelBooking(env,config,existing,ctx);const {row,nonce}=await lease(env,existing.id);try{
+async function review(request,env,config,input,ctx){await owner(request,env,config);if(typeof input.bookingId!=='string'||typeof input.approve!=='boolean')fail(400,'Choose a request to review.');const existing=await env.RECOVERY_DB.prepare('SELECT * FROM recovery_bookings WHERE id=? AND owner_id=?').bind(input.bookingId,config.profile.id).first();if(!existing)fail(404,'Booking not found.');if(existing.source!=='recovery')fail(409,'This appointment belongs to the previous booking system.');if(!input.approve&&['confirmed','confirming','cancelling','cancelled'].includes(existing.status))return cancelBooking(env,config,existing,ctx);const {row,nonce}=await lease(env,existing.id);try{
  if(!input.approve){if(row.status==='declined'){await statusMail(env,row,config);await deliver(env,row.id,ctx);return json({booking:safeBooking(row,config),...await recoveryMailFlags(env,row.id)});}if(row.status!=='pending_approval')fail(409,'This request has already been reviewed.');Object.assign(row,await transition(env,row.id,nonce,['pending_approval'],'declined'));await statusMail(env,row,config);await deliver(env,row.id,ctx);return json({booking:safeBooking(row,config),...await recoveryMailFlags(env,row.id)});}
  if(row.status==='confirmed'){await statusMail(env,row,config);await deliver(env,row.id,ctx);return json({booking:safeBooking(row,config),...await recoveryMailFlags(env,row.id)});}
  if(!['pending_approval','confirming'].includes(row.status))fail(409,'This request can no longer be approved.');if(row.starts_ms<=Date.now())fail(409,'The requested appointment time has passed.');
@@ -148,14 +240,14 @@ async function cancelBooking(env,config,existing,ctx,clientOnly=false){const {ro
   await renew(env,row.id,nonce);const r=(check.status===404||check.status===410)?check:await google(env,path,'DELETE');if(!r.ok&&r.status!==404&&r.status!==410)fail(503,'Cancellation is saved but the calendar update is delayed. Please try again.');}
  Object.assign(row,await transition(env,row.id,nonce,['pending_approval','cancelling'],'cancelled',{meeting_url:null,meeting_error:null}));await env.RECOVERY_DB.prepare("UPDATE recovery_reschedule_operations SET state='cancelled',updated_ms=? WHERE booking_id=? AND state IN ('reserved','applying')").bind(Date.now(),row.id).run();row.reschedule_json=null;await statusMail(env,row,config);await deliver(env,row.id,ctx);return json({booking:safeBooking(row,config),...await recoveryMailFlags(env,row.id,clientOnly)});
  }finally{await release(env,row.id,nonce);}}
-async function cancel(request,env,config,ctx){return cancelBooking(env,config,await managed(request,env),ctx,true);}
+async function cancel(request,env,config,ctx){const input=request.body?await body(request):{};fields(input,['bookingId'],'booking request');return cancelBooking(env,config,await managed(request,env,config,input.bookingId),ctx,true);}
 function rescheduleView(row,op){row.reschedule_json=op&&['reserved','applying'].includes(op.state)?JSON.stringify(op):null;return row;}
 async function rescheduleSlots(request,env,config,url){
- await owner(request,env);
+ await owner(request,env,config);
  const row=await env.RECOVERY_DB.prepare("SELECT * FROM recovery_bookings WHERE id=? AND owner_id=? AND source='recovery'").bind(url.searchParams.get('bookingId')||'',config.profile.id).first();
  if(!row)fail(404,'Booking not found.');
  if(row.status!=='confirmed'||row.starts_ms<=Date.now())fail(409,'Only a future confirmed appointment can be rescheduled.');
- const available=await slots(env,config,service(config,row.service_id),url.searchParams.get('day')||'');
+ const available=await slots(env,config,{...service(config,row.service_id,true),duration:(row.ends_ms-row.starts_ms)/MINUTE},url.searchParams.get('day')||'');
  const buffer=config.preferences.buffer_minutes*MINUTE;
  // Free/busy responses can merge the current event with other private events.
  // Never subtract that interval: conservatively keep the old time and buffer busy.
@@ -186,7 +278,7 @@ async function failReschedule(env,row,nonce,op){
   AND EXISTS(SELECT 1 FROM recovery_bookings WHERE id=recovery_reschedule_operations.booking_id AND action_nonce=? AND action_until>?)`).bind(Date.now(),op.operation_id,nonce,Date.now()).run();
 }
 async function reschedule(request,env,config,input,ctx){
- await owner(request,env);
+ await owner(request,env,config);
  if(!uuid(input.bookingId)||!uuid(input.operationId))fail(400,'Choose a booking and refresh before rescheduling.');
  const starts=typeof input.startsAt==='string'?Date.parse(input.startsAt):NaN;
  if(!Number.isFinite(starts)||starts%MINUTE!==0)fail(400,'Choose an available appointment time.');
@@ -206,7 +298,7 @@ async function reschedule(request,env,config,input,ctx){
   if(!op){
    const active=await env.RECOVERY_DB.prepare("SELECT operation_id FROM recovery_reschedule_operations WHERE booking_id=? AND state IN ('reserved','applying')").bind(row.id).first();
    if(active)fail(409,'An earlier time change is still being checked. Retry that change or cancel the appointment first.');
-   const svc=service(config,row.service_id),ends=starts+(row.ends_ms-row.starts_ms),buffer=config.preferences.buffer_minutes*MINUTE;
+   const svc={...service(config,row.service_id,true),duration:(row.ends_ms-row.starts_ms)/MINUTE},ends=starts+(row.ends_ms-row.starts_ms),buffer=config.preferences.buffer_minutes*MINUTE;
    if(!schedule(config,svc,localParts(starts,config.profile.timezone).day,Date.now()).includes(starts))fail(409,'That appointment time is no longer available. Choose another time.');
    if(overlap(starts,ends,row.starts_ms,row.ends_ms,buffer))fail(409,'Choose a time outside the current appointment and its buffer.');
    const periods=await busy(env,starts-buffer,ends+buffer);
@@ -221,9 +313,10 @@ async function reschedule(request,env,config,input,ctx){
    op=await env.RECOVERY_DB.prepare(`INSERT OR IGNORE INTO recovery_reschedule_operations(operation_id,booking_id,request_hash,previous_starts_ms,previous_ends_ms,starts_ms,ends_ms,state,google_etag,created_ms,updated_ms)
     SELECT ?,?,?,?,?,?,?,'reserved',?,?,?
     WHERE EXISTS(SELECT 1 FROM recovery_bookings WHERE id=? AND action_nonce=? AND action_until>? AND status='confirmed' AND starts_ms=? AND ends_ms=?)
+    AND EXISTS(SELECT 1 FROM recovery_configuration WHERE owner_id=? AND revision=?)
     AND NOT EXISTS(SELECT 1 FROM recovery_bookings WHERE owner_id=? AND id<>? AND status IN (${ACTIVE}) AND starts_ms<? AND ends_ms>?)
     AND NOT EXISTS(SELECT 1 FROM recovery_reschedule_operations r JOIN recovery_bookings b ON b.id=r.booking_id WHERE b.owner_id=? AND b.status IN (${ACTIVE}) AND r.state IN ('reserved','applying') AND r.starts_ms<? AND r.ends_ms>?) RETURNING *`)
-    .bind(input.operationId,row.id,requestHash,row.starts_ms,row.ends_ms,starts,ends,event.etag,now,now,row.id,nonce,now,row.starts_ms,row.ends_ms,config.profile.id,row.id,ends+buffer,starts-buffer,config.profile.id,ends+buffer,starts-buffer).first();
+    .bind(input.operationId,row.id,requestHash,row.starts_ms,row.ends_ms,starts,ends,event.etag,now,now,row.id,nonce,now,row.starts_ms,row.ends_ms,config.profile.id,config.revision,config.profile.id,row.id,ends+buffer,starts-buffer,config.profile.id,ends+buffer,starts-buffer).first();
    if(!op)fail(409,'That appointment time has just been taken, or this booking changed. Refresh and choose another time.');
   }
   const pending=(message='The time change is saved and Google is being checked. Both times remain reserved until this finishes. Retry this change shortly.')=>json({booking:safeBooking(rescheduleView(row,op),config),message},202);
@@ -281,27 +374,29 @@ export async function handleRecovery(request,env,ctx){try{
  if(!['GET','POST'].includes(request.method))return json({error:'Method not allowed.'},405);
  const path=u.pathname.slice('/api/recovery/'.length).replace(/\/$/,'');
  if(request.method==='POST'&&request.headers.get('origin')!==allowed)fail(403,'This request must come from BriefBooth.');
- const config=configuration(env);
+ const config=await configuration(env);
  if(request.method==='GET'&&path==='config'){
   const intake_questions=(config.profile.intake_questions||[]).filter(q=>q.id==='project-types');
-  const description='I build websites for businesses and people, from personal portfolios to online stores and booking sites. I also build apps and custom software.';
-  return json({profile:{...config.profile,intake_questions},services:config.services.map(item=>({...item,description})),preferences:config.preferences});
+  return json({revision:config.revision,profile:{...config.profile,intake_questions},services:config.services.filter(item=>item.active===true),preferences:config.preferences});
  }
+ if(request.method==='GET'&&path==='owner-config'){await owner(request,env,config);return json(ownerConfiguration(config));}
+ if(request.method==='POST'&&path==='owner-config')return await saveConfiguration(request,env,config,await body(request));
+ if(request.method==='GET'&&path==='client-bookings')return await clientBookings(request,env,config,u);
  if(request.method==='GET'&&path==='slots'){await rate(request,env,'slots',90,MINUTE);return json({slots:await slots(env,config,service(config,u.searchParams.get('service')),u.searchParams.get('day')||'')});}
  if(request.method==='GET'&&path==='reschedule-slots')return await rescheduleSlots(request,env,config,u);
  if(request.method==='POST'&&path==='reschedule')return await reschedule(request,env,config,await body(request),ctx);
  if(request.method==='POST'&&path==='book')return await book(request,env,config,await body(request),ctx);
- if(request.method==='GET'&&path==='manage'){await rate(request,env,'manage',90,MINUTE);const row=await managed(request,env);const {retries}=await reconcileRecoveryMail(env,row.id);if(retries.length)scheduleRecoveryMailChecks(env,row.id,ctx,retries);return json({booking:safeBooking(row,config),...await recoveryMailFlags(env,row.id,true)});}
+ if(request.method==='GET'&&path==='manage'){await rate(request,env,'manage',90,MINUTE);const row=await managed(request,env,config,u.searchParams.has('bookingId')?u.searchParams.get('bookingId'):undefined);const {retries}=await reconcileRecoveryMail(env,row.id);if(retries.length)scheduleRecoveryMailChecks(env,row.id,ctx,retries);return json({booking:safeBooking(row,config),...await recoveryMailFlags(env,row.id,true)});}
  if(request.method==='POST'&&path==='cancel'){await rate(request,env,'cancel',12,15*MINUTE);return await cancel(request,env,config,ctx);}
  if(request.method==='GET'&&path==='admin'){
-  await owner(request,env);const cursor=readAdminCursor(u.searchParams.get('cursor'));
+  await owner(request,env,config);const cursor=readAdminCursor(u.searchParams.get('cursor'));
   const where=cursor?' AND (b.created_ms,b.id)<(?,?)':'';
   const params=cursor?[config.profile.id,cursor[0],cursor[1]]:[config.profile.id];
   const rows=await env.RECOVERY_DB.prepare(`SELECT b.*, (${RESCHEDULE_JSON}) AS reschedule_json, (${recoveryMailFlagsSql}) AS mail_flags FROM recovery_bookings b WHERE b.owner_id=?${where} ORDER BY b.created_ms DESC,b.id DESC LIMIT 201`).bind(...params).all();
   const page=rows.results.slice(0,200);return json({bookings:page.map(r=>({...safeBooking(r,config,true),...readRecoveryMailFlags(r.mail_flags)})),profile:{name:config.profile.name,timezone:config.profile.timezone},next_cursor:rows.results.length>200?nextAdminCursor(page.at(-1)):null});
  }
- if(request.method==='POST'&&path==='notifications'){await owner(request,env);const input=await body(request);const row=await env.RECOVERY_DB.prepare("SELECT * FROM recovery_bookings WHERE id=? AND owner_id=? AND source='recovery'").bind(String(input.bookingId||''),config.profile.id).first();if(!row)fail(404,'Booking not found.');await reconcileRecoveryMail(env,row.id);if(row.status==='pending_approval')await pendingMail(env,row,config,await capability(env,row.id,row.request_id));else if(['confirmed','cancelled','declined'].includes(row.status))await statusMail(env,row,config);await deliver(env,row.id,ctx);return json({...await recoveryMailFlags(env,row.id)});}
+ if(request.method==='POST'&&path==='notifications'){await owner(request,env,config);const input=await body(request);const row=await env.RECOVERY_DB.prepare("SELECT * FROM recovery_bookings WHERE id=? AND owner_id=? AND source='recovery'").bind(String(input.bookingId||''),config.profile.id).first();if(!row)fail(404,'Booking not found.');await reconcileRecoveryMail(env,row.id);if(row.status==='pending_approval')await pendingMail(env,row,config,await capability(env,row.id,row.request_id));else if(['confirmed','cancelled','declined'].includes(row.status))await statusMail(env,row,config);await deliver(env,row.id,ctx);return json({...await recoveryMailFlags(env,row.id)});}
  if(request.method==='POST'&&path==='review')return await review(request,env,config,await body(request),ctx);
  return json({error:'Not found.'},404);
- }catch(error){if(error instanceof HttpError)return json({error:error.message},error.status);return json({error:'Booking is temporarily unavailable. Your existing request, if any, is still saved.'},503);}}
+ }catch(error){if(error instanceof HttpError)return json({error:error.message,...(error.code?{code:error.code}:{})},error.status);return json({error:'Booking is temporarily unavailable. Your existing request, if any, is still saved.'},503);}}
 export const recoveryTest={localInstant,schedule,digest,transition};

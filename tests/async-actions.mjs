@@ -217,7 +217,7 @@ console.log('PASS rescheduling and appointment notes retain native form submissi
 function reviewRefresh(context) {
   const file='components/recovery-client.tsx';
   const source=ts.createSourceFile(file,fs.readFileSync(file,'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
-  const component=source.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='RecoveryReview');
+  const component=source.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='RecoveryReviewWorkspace');
   const effect=component.body.statements.find(node=>ts.isExpressionStatement(node)&&ts.isCallExpression(node.expression)&&node.expression.expression.getText(source)==='useEffect'&&node.expression.arguments[1]?.getText(source)==='[token, refresh]');
   assert(effect,'Missing owner-review refresh effect');
   const js=ts.transpileModule(`const refreshEffect=${effect.expression.arguments[0].getText(source)};`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
@@ -226,7 +226,7 @@ function reviewRefresh(context) {
 function reviewContext(api) {
   const original={id:'booking',status:'confirmed',starts_at:'2026-11-16T15:00:00Z',ends_at:'2026-11-16T15:30:00Z',client_email:'client@example.com',meet_url:'https://meet.google.com/abc-defg-hij',email_pending:true,email_failed:true};
   const state={bookings:[original,{id:'other',status:'pending_approval'}],error:'',actionError:'',busy:false,loaded:true,refresh:0,notice:''};
-  const context={api,token:'test-only-owner-key',lock:{current:false},visiblePages:{current:1},AbortController,
+  const context={api,token:'test-only-owner-key',lock:{current:false},actionAbort:{current:null},visiblePages:{current:1},AbortController,
     message:error=>error.message,notificationStatus:()=> 'Notification status',
     setBookings:value=>{state.bookings=typeof value==='function'?value(state.bookings):value;},
     setError:value=>{state.error=value;},setActionError:value=>{state.actionError=value;},

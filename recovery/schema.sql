@@ -1,5 +1,12 @@
 -- Dedicated, isolated recovery data. Apply only to the RECOVERY_DB D1 binding.
 PRAGMA foreign_keys = ON;
+CREATE TABLE IF NOT EXISTS recovery_configuration (
+ owner_id TEXT PRIMARY KEY,
+ revision INTEGER NOT NULL CHECK(revision>0),
+ config_json TEXT NOT NULL CHECK(json_valid(config_json)),
+ updated_ms INTEGER NOT NULL,
+ updated_by TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS recovery_bookings (
  id TEXT PRIMARY KEY,
  owner_id TEXT NOT NULL,
@@ -27,6 +34,7 @@ CREATE TABLE IF NOT EXISTS recovery_bookings (
 CREATE INDEX IF NOT EXISTS recovery_bookings_owner_time ON recovery_bookings(owner_id, starts_ms, ends_ms);
 CREATE INDEX IF NOT EXISTS recovery_bookings_status_time ON recovery_bookings(owner_id,status,starts_ms);
 CREATE INDEX IF NOT EXISTS recovery_bookings_owner_created ON recovery_bookings(owner_id,created_ms DESC,id DESC);
+CREATE INDEX IF NOT EXISTS recovery_bookings_client_history ON recovery_bookings(owner_id,client_email,created_ms DESC,id DESC) WHERE source='recovery';
 CREATE TABLE IF NOT EXISTS recovery_rate_limits (
  bucket TEXT PRIMARY KEY,
  count INTEGER NOT NULL,

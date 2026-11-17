@@ -13,7 +13,7 @@ import { ZoomConnection } from "@/components/zoom-connection";
 import { IntakeTemplatePicker } from "@/components/intake-template-picker";
 import { defaultQuestions } from "@/lib/intake";
 import { Suspense, useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AvatarPicker } from "@/components/avatar-picker";
 import { Logo } from "@/components/site-header";
@@ -21,9 +21,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { db, configured, Profile, Service } from "@/lib/supabase";
-import { RecoveryStudio } from "@/components/recovery-account-links";
+import { RecoveryReview } from "@/components/recovery-client";
 import { observeWorkspaceIdentity } from "@/lib/workspace-session";
-import { accountSignInPath, clientWorkspacePath, needsConsultantWorkspace, isRecoveryOwnerWorkspace } from "@/lib/account-routing";
+import { accountSignInPath, clientWorkspacePath, isRecoveryOwnerWorkspace } from "@/lib/account-routing";
 type Hours = {
   weekday: number;
   start_time: string;
@@ -59,15 +59,14 @@ export default function Studio() {
   return <Suspense fallback={<main id="main" className="p-8" role="status">Opening your workspace…</main>}><StudioIntent /></Suspense>;
 }
 function StudioIntent() {
-  const search = useSearchParams();
-  const explicit = needsConsultantWorkspace(search.toString());
   const [identity, setIdentity] = useState<{ checked: boolean; userId: string | null }>({ checked: !configured, userId: null });
   useEffect(() => {
     if (configured) return observeWorkspaceIdentity(db().auth, setIdentity);
   }, []);
-  if (!identity.checked && explicit) return <main id="main" className="p-8" role="status">Checking your account…</main>;
-  const accountWorkspace = identity.checked && identity.userId && !isRecoveryOwnerWorkspace(identity.userId, true);
-  return explicit || accountWorkspace ? <LegacyStudio key={identity.userId || "signed-out"} /> : <RecoveryStudio />;
+  if (!identity.checked) return <main id="main" className="p-8" role="status">Checking your account…</main>;
+  return identity.userId && isRecoveryOwnerWorkspace(identity.userId, true)
+    ? <RecoveryReview key={identity.userId} />
+    : <LegacyStudio key={identity.userId || "signed-out"} />;
 }
 function LegacyStudio() {
   const router = useRouter();

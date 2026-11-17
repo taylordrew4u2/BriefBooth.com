@@ -16,8 +16,9 @@ export function SiteHeader() {
       <Logo />
       <nav aria-label="Main navigation">
         {recovery ? <>
-          <Link href="/booking-status/">My booking</Link>
-          <Link href="/booking-review/" className="nav-signin">Review requests</Link>
+          <Link href="/client/">My bookings</Link>
+          <Link href="/studio/">Studio</Link>
+          <Link href="/account/sign-in/" className="nav-signin">Sign in</Link>
           <Link href="/book/4u-digital/" className="button small">Book a consultation <span aria-hidden="true">↗</span></Link>
         </> : <>
         <Link href="/#how-it-works">How it works</Link>
