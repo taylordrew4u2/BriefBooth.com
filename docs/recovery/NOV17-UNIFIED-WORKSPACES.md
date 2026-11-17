@@ -36,4 +36,19 @@ Both existing MP4 files match their prior SHA256 values. The Worker contains the
 
 The first live check found that normal browser Auth succeeded but the Worker's account verification returned 503. The cause was `redirect: error`, accepted by the Node test mock but unsupported by Cloudflare Workers. A local workerd probe reproduced the exact TypeError before any network request. The correction uses `manual` and continues to reject every redirect without forwarding the session credential. The focused account test now verifies 302/307 rejection as well as the supported mode. This preserves the same Auth project and permissions.
 
-Publication and final live verification results will be appended separately.
+## Published release and actual live verification
+
+Published to canonical production as `ff98bad1-53c5-42ba-90aa-a6cf29bcae21`, source `c290b775023ed0edbc137abe211185d7b2a6a574`, on November 17. Both implementation commits are preserved on GitHub branch `fix/briefbooth-structure-nov17`. The initial `f15c9dea` release was superseded after the diagnosed Worker redirect incompatibility was corrected. No outstanding 503 from that defect remained in the verified account flow.
+
+The existing signed-in business owner opened current requests and settings without entering an owner key. The actual Settings form saved revision 2; a public configuration comparison confirmed all business/service/hours/rules values stayed identical to the pre-release baseline. The client dashboard displayed current D1 appointments together with the earlier Supabase record. Anonymous owner/config/client-history reads were denied, including an attempted email query. This release retains legacy consultant routes and the existing owner write guard; it does not claim an exhaustive retest of every other consultant workflow.
+
+A single disposable production booking `0a76118b-6480-4993-8ff4-ffaf9655c22c` exercised the complete flow:
+
+1. Requested December 20 at 3 PM America/New_York through the real booking page.
+2. Approved through the owner's normal signed-in Studio; business Google Calendar visibly showed the created event and Google Meet was available.
+3. Rescheduled through Studio to December 21 at 3 PM. Source Calendar and client status showed the new time, and the same Meet link remained.
+4. Cancelled through the signed-in client's current appointment action. Both owner and client displayed Cancelled; business Calendar search showed no events; the stored meeting URL was null, no reschedule operation remained active, and both public time slots reopened.
+
+All eight notices (client and owner request, confirmation, reschedule and cancellation) had exact matching provider message-ID/recipient delivery events. No duplicate was sent. A normal owner delivery check cleared the current cancellation warning after provider status reconciliation. Historical superseded reschedule records may retain accepted status because only the current booking stage/version is reconciled; they do not contribute to current pending flags. Provider SMTP delivery does not independently prove final inbox placement.
+
+Proof screenshot: `NOV17-STRUCTURE-STUDIO-LIVE.jpg` in the durable recovery folder. Machine-readable release record: `NOV17-STRUCTURE-RELEASE.json`. The real test is cleaned up; do not recreate it blindly. The complete reviewer recording and current Google submission were preserved. Google approval remains pending. No new provider, plan, trial, paid feature, permission scope, identity, support request or credential transfer was added. Existing free-plan capacity is finite.
