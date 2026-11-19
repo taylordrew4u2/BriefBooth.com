@@ -1,4 +1,5 @@
 import { deliverRecoveryEmails as deliver, readRecoveryMailFlags, reconcileRecoveryMail, recoveryMailFlags, recoveryMailFlagsSql, scheduleRecoveryMailChecks } from './recovery-email.mjs';
+import { GoogleConnectionError, readGoogleCredential, beginGoogleConnection, completeGoogleConnection, googleConnectionStatus } from './recovery-google-connection.mjs';
 
 // Isolated, no-payment recovery for the existing 4u Digital booking page.
 // Secrets are provided only through Cloudflare bindings, never public config.
@@ -147,9 +148,10 @@ async function clientBookings(request,env,config,url){
 let tokenCache;
 async function accessToken(env){
  if(!env.GOOGLE_CLIENT_ID||!env.GOOGLE_CLIENT_SECRET||!env.GOOGLE_REFRESH_TOKEN)fail(503,'Calendar connection is unavailable. No booking was confirmed.');
- const cacheKey=env.GOOGLE_CLIENT_ID+':'+env.GOOGLE_REFRESH_TOKEN;
+ const credential=await readGoogleCredential(env);
+ const cacheKey=env.GOOGLE_CLIENT_ID+':'+credential.revision+':'+credential.refreshToken;
  if(tokenCache?.key===cacheKey&&tokenCache.until>Date.now()+60000)return tokenCache.token;
- let r;try{r=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,refresh_token:env.GOOGLE_REFRESH_TOKEN,grant_type:'refresh_token'}),signal:AbortSignal.timeout(10000)});}catch{fail(503,'Calendar is temporarily unavailable. Please try again.');}
+ let r;try{r=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,refresh_token:credential.refreshToken,grant_type:'refresh_token'}),signal:AbortSignal.timeout(10000)});}catch{fail(503,'Calendar is temporarily unavailable. Please try again.');}
  if(!r.ok)fail(503,'Calendar connection needs attention. No booking was confirmed.');const data=await r.json();if(!data.access_token)fail(503,'Calendar connection needs attention.');tokenCache={key:cacheKey,token:data.access_token,until:Date.now()+Math.min(Number(data.expires_in)||300,3600)*1000};return data.access_token;
 }
 async function google(env,path,method='GET',data,knownToken,extraHeaders={}){const token=knownToken||await accessToken(env);try{return await fetch('https://www.googleapis.com/calendar/v3/'+path,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json',...extraHeaders},body:data===undefined?undefined:JSON.stringify(data),signal:AbortSignal.timeout(10000)});}catch{fail(503,'Calendar is temporarily unavailable. Please try again.');}}
@@ -396,6 +398,17 @@ export async function handleRecovery(request,env,ctx){try{
  const path=u.pathname.slice('/api/recovery/'.length).replace(/\/$/,'');
  if(request.method==='POST'&&request.headers.get('origin')!==allowed)fail(403,'This request must come from BriefBooth.');
  const config=await configuration(env);
+ if((request.method==='POST'&&['google-connect','google-complete'].includes(path))||(request.method==='GET'&&path==='google-status')){
+  // Reconnecting requires a current verified owner sign-in, never a booking
+  // capability or the emergency private review key. Callback staging alone
+  // cannot replace the working connection after logout/account switching.
+  await rate(request,env,'google-connection',20,15*MINUTE);
+  const identity=await sessionIdentity(request,env);
+  if(identity.id!==config.profile.id)fail(403,'This account does not manage 4u Digital bookings.');
+  if(path==='google-status')return json(await googleConnectionStatus(env));
+  if(path==='google-connect')return await beginGoogleConnection(request,env,identity.id);
+  return await completeGoogleConnection(request,env,identity.id);
+ }
  if(request.method==='GET'&&path==='config'){
   const intake_questions=(config.profile.intake_questions||[]).filter(q=>q.id==='project-types');
   return json({revision:config.revision,profile:{...config.profile,intake_questions},services:config.services.filter(item=>item.active===true),preferences:config.preferences});
@@ -419,5 +432,5 @@ export async function handleRecovery(request,env,ctx){try{
  if(request.method==='POST'&&path==='notifications'){await owner(request,env,config);const input=await body(request);const row=await env.RECOVERY_DB.prepare("SELECT * FROM recovery_bookings WHERE id=? AND owner_id=? AND source='recovery'").bind(String(input.bookingId||''),config.profile.id).first();if(!row)fail(404,'Booking not found.');await reconcileRecoveryMail(env,row.id);if(row.status==='pending_approval')await pendingMail(env,row,config,await capability(env,row.id,row.request_id));else if(['confirmed','cancelled','declined'].includes(row.status))await statusMail(env,row,config);await deliver(env,row.id,ctx);return json({...await recoveryMailFlags(env,row.id)});}
  if(request.method==='POST'&&path==='review')return await review(request,env,config,await body(request),ctx);
  return json({error:'Not found.'},404);
- }catch(error){if(error instanceof HttpError)return json({error:error.message,...(error.code?{code:error.code}:{})},error.status);return json({error:'Booking is temporarily unavailable. Your existing request, if any, is still saved.'},503);}}
+ }catch(error){if(error instanceof HttpError||error instanceof GoogleConnectionError)return json({error:error.message,...(error.code?{code:error.code}:{})},error.status);return json({error:'Booking is temporarily unavailable. Your existing request, if any, is still saved.'},503);}}
 export const recoveryTest={localInstant,schedule,digest,transition};

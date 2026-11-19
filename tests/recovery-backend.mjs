@@ -15,7 +15,7 @@ const DB={
   catch(error){sql.exec('ROLLBACK');throw error;}
  },
 };
-const config={profile:{id:'owner',slug:'4u-digital',name:'4u Digital',timezone:'America/New_York',booking_mode:'approval',intake_questions:[{id:'project-types',label:'What do you need?',type:'multiple',required:true,options:['Website','App','Other / not sure yet']},{id:'old-context',label:'Previous context question',type:'short',required:false}]},services:[{id:'service',title:'Free consultation',duration:30,active:true,amount_cents:0,meeting_modes:['google_meet']}],availability:Array.from({length:7},(_,weekday)=>({weekday,start_time:'09:00',end_time:'20:00'})),preferences:{notice_hours:1,buffer_minutes:60,horizon_days:60}};
+const config={profile:{id:'00000000-0000-4000-8000-000000000001',slug:'4u-digital',name:'4u Digital',timezone:'America/New_York',booking_mode:'approval',intake_questions:[{id:'project-types',label:'What do you need?',type:'multiple',required:true,options:['Website','App','Other / not sure yet']},{id:'old-context',label:'Previous context question',type:'short',required:false}]},services:[{id:'service',title:'Free consultation',duration:30,active:true,amount_cents:0,meeting_modes:['google_meet']}],availability:Array.from({length:7},(_,weekday)=>({weekday,start_time:'09:00',end_time:'20:00'})),preferences:{notice_hours:1,buffer_minutes:60,horizon_days:60}};
 const ownerToken='test-owner-secret-token-that-is-at-least-32-chars';
 const env={RECOVERY_DB:DB,RECOVERY_CONFIG_JSON:JSON.stringify(config),RECOVERY_CAPABILITY_SECRET:'test-only-capability-secret-that-is-32-characters',RECOVERY_OWNER_TOKEN_SHA256:await recoveryTest.digest(ownerToken),RECOVERY_OWNER_EMAIL:'owner@example.com',GOOGLE_CLIENT_ID:'dummy-client',GOOGLE_CLIENT_SECRET:'dummy-secret',GOOGLE_REFRESH_TOKEN:'dummy-refresh',BREVO_API_KEY:'dummy-mail'};
 const brevoEvents=new Map();
@@ -223,10 +223,10 @@ try{
  // including timestamp ties, without crossing the configured owner's boundary.
  const pagedInsert=sql.prepare('INSERT INTO recovery_bookings(id,owner_id,service_id,title,starts_ms,ends_ms,client_name,client_email,status,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?)');
  const pagingBase=Date.now()+1000000;
- for(let i=0;i<205;i++)pagedInsert.run('10000000-0000-4000-8000-'+String(i).padStart(12,'0'),'owner','service','History item',pagingBase,pagingBase+30*60000,'Test','test@example.com','cancelled',pagingBase+Math.floor(i/3),pagingBase);
+ for(let i=0;i<205;i++)pagedInsert.run('10000000-0000-4000-8000-'+String(i).padStart(12,'0'),'00000000-0000-4000-8000-000000000001','service','History item',pagingBase,pagingBase+30*60000,'Test','test@example.com','cancelled',pagingBase+Math.floor(i/3),pagingBase);
  const olderPendingId='20000000-0000-4000-8000-000000000000';
- pagedInsert.run(olderPendingId,'owner','service','Older pending request',pagingBase,pagingBase+30*60000,'Test','test@example.com','pending_approval',1,1);
- pagedInsert.run('30000000-0000-4000-8000-000000000000','another-owner','service','Other owner private request',pagingBase,pagingBase+30*60000,'Other','other@example.com','pending_approval',pagingBase+100000,pagingBase);
+ pagedInsert.run(olderPendingId,'00000000-0000-4000-8000-000000000001','service','Older pending request',pagingBase,pagingBase+30*60000,'Test','test@example.com','pending_approval',1,1);
+ pagedInsert.run('30000000-0000-4000-8000-000000000000','00000000-0000-4000-8000-000000000002','service','Other owner private request',pagingBase,pagingBase+30*60000,'Other','other@example.com','pending_approval',pagingBase+100000,pagingBase);
  assert.equal((await request('admin?cursor=invalid',{token:ownerToken})).status,400);
  const invalidTuple=btoa(JSON.stringify([-1,olderPendingId])).replace(/=+$/,'');
  assert.equal((await request('admin?cursor='+encodeURIComponent(invalidTuple),{token:ownerToken})).status,400);
@@ -234,7 +234,7 @@ try{
  assert.equal((await request('admin?cursor='+encodeURIComponent(firstPage.body.next_cursor))).status,401,'A cursor grants no owner access');
  const allPaged=[...firstPage.body.bookings];let nextCursor=firstPage.body.next_cursor;
  while(nextCursor){const page=await request('admin?cursor='+encodeURIComponent(nextCursor),{token:ownerToken});assert.equal(page.status,200);assert.ok(page.body.bookings.length<=200);allPaged.push(...page.body.bookings);nextCursor=page.body.next_cursor;}
- const expectedIds=sql.prepare('SELECT id FROM recovery_bookings WHERE owner_id=? ORDER BY created_ms DESC,id DESC').all('owner').map(r=>r.id);
+ const expectedIds=sql.prepare('SELECT id FROM recovery_bookings WHERE owner_id=? ORDER BY created_ms DESC,id DESC').all('00000000-0000-4000-8000-000000000001').map(r=>r.id);
  assert.deepEqual(allPaged.map(b=>b.id),expectedIds,'No omitted, duplicate or out-of-order records across timestamp ties');
  assert.ok(allPaged.some(b=>b.id===olderPendingId&&b.status==='pending_approval'));
  assert.ok(allPaged.every(b=>b.title!=='Other owner private request'));

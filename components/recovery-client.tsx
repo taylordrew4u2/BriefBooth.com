@@ -276,6 +276,12 @@ function RecoveryReviewWorkspace({ sessionToken = "", sessionEmail = "" }: { ses
   const [declineId, setDeclineId] = useState<string | null>(null);
   const [notificationNotice, setNotificationNotice] = useState("");
   const [tab, setTab] = useState("requests");
+  useEffect(() => {
+    const intent = new URLSearchParams(window.location.search);
+    if (sessionToken && (intent.get("connect") === "google" || intent.has("google"))) {
+      Promise.resolve().then(() => setTab("settings"));
+    }
+  }, [sessionToken]);
   const actionAbort = useRef<AbortController | null>(null);
   useEffect(() => () => actionAbort.current?.abort(), []);
   useEffect(() => {

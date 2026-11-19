@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { recoveryApi } from "@/lib/recovery-api";
+import { RecoveryGoogleConnection } from "@/components/recovery-google-connection";
 
 type Service = { id: string; title: string; description: string; duration: number; active: boolean };
 type OwnerConfig = {
@@ -53,6 +54,7 @@ export function RecoveryOwnerSettings({ token }: { token: string }) {
   return <section aria-labelledby="owner-settings-title" className="space-y-5">
     <h2 id="owner-settings-title" className="text-2xl font-semibold">Your booking settings</h2>
     <p>These settings control your live 4u Digital booking page. Consultations stay free, use Google Meet, and require your approval.</p>
+    <RecoveryGoogleConnection token={token} />
     {error && <div role="alert" className="rounded-xl border p-4"><p>{error}</p><Button type="button" variant="outline" disabled={saving} onClick={() => { setNotice(""); setReload(value => value + 1); }}>Reload saved settings</Button><p className="mt-2 text-sm">Reloading replaces unsaved edits with the latest saved settings.</p></div>}
     {notice && <p role="status" className="rounded-xl bg-secondary p-4">{notice}</p>}
     {!settings ? <p role="status">Loading settings…</p> : <form key={settings.revision + ":" + reload} onSubmit={save} className="space-y-6">
@@ -84,7 +86,6 @@ export function RecoveryOwnerSettings({ token }: { token: string }) {
         <label className="space-y-2"><span>Book ahead (days)</span><Input type="number" name="horizon_days" min={1} max={60} step={1} defaultValue={settings.config.preferences.horizon_days} required /></label>
         <label className="space-y-2"><span>Time between calls (minutes)</span><Input type="number" name="buffer_minutes" min={0} max={120} step={1} defaultValue={settings.config.preferences.buffer_minutes} required /></label>
       </fieldset>
-      <section className="rounded-2xl bg-secondary p-5"><h3 className="font-semibold">Google Calendar &amp; Meet</h3><p className="mt-2">{settings.calendar.configured ? "Your existing Google Meet connection is configured. Available times are checked against its Calendar when a client chooses a date." : "Your Google Meet connection needs attention."}</p><p className="mt-2 text-sm">Saving booking settings preserves the existing Calendar connection and meeting links.</p></section>
       <Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save booking settings"}</Button>
     </form>}
   </section>;
