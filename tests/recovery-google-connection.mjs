@@ -20,6 +20,8 @@ function database(){
  sql.exec(readFileSync(new URL('../recovery/schema.sql',import.meta.url),'utf8'));
  sql.exec(readFileSync(new URL('../recovery/google-connection-migration.sql',import.meta.url),'utf8'));
  sql.exec(readFileSync(new URL('../recovery/google-connection-migration.sql',import.meta.url),'utf8'));
+ sql.exec(readFileSync(new URL('../recovery/google-diagnostics-migration.sql',import.meta.url),'utf8'));
+ sql.exec(readFileSync(new URL('../recovery/google-diagnostics-migration.sql',import.meta.url),'utf8'));
  const DB={prepare(query){return {bind(...args){return {run(){return {meta:{changes:sql.prepare(query).run(...args).changes}};},async first(){return sql.prepare(query).get(...args)||null;},async all(){return {results:sql.prepare(query).all(...args)};}};}};},async batch(statements){sql.exec('BEGIN');try{const rows=statements.map(s=>s.run());sql.exec('COMMIT');return rows;}catch(e){sql.exec('ROLLBACK');throw e;}}};
  return {sql,DB};
 }
@@ -96,6 +98,7 @@ async function begin(f){const result=await api(f,'google-connect',{method:'POST'
 async function callback(f,flow,options={}){const code='test-code-'+(++f.codeNumber);const result=await request(f,'/api/google/callback?state='+encodeURIComponent(flow.state)+'&code='+code,{token:null,...options});return {...result,code};}
 const redirectResult=response=>new URL(response.headers.get('location'),ORIGIN).searchParams.get('google');
 async function credential(f){return readGoogleCredential(f.env);}
+function storedDiagnostics(f){return f.sql.prepare('SELECT diagnostic FROM recovery_google_failures ORDER BY failed_ms,operation_hash').all().map(row=>JSON.parse(row.diagnostic));}
 function assertPrivate(value,f){const text=JSON.stringify(value);for(const secret of [f.env.GOOGLE_REFRESH_TOKEN,f.env.GOOGLE_CLIENT_SECRET,...f.codeRefresh.values()])assert.ok(!text.includes(secret),'Credentials must not be disclosed');}
 
 try{
@@ -212,6 +215,7 @@ try{
   const result=await callback(f,flow,scenario==='missing-cookie'?{cookie:false}:scenario==='wrong-cookie'?{cookieValue:'__Secure-briefbooth-google=not-the-browser'}:{});
   assert.equal(result.status,303);assert.notEqual(redirectResult(result),'pending');assert.equal(f.exchangeCount,0,scenario);
   assert.equal((await credential(f)).refreshToken,f.env.GOOGLE_REFRESH_TOKEN);
+  assert.deepEqual(storedDiagnostics(f),[],'Unclaimed/invalid callbacks cannot write durable failures');
  }
  // Every provider validation failure leaves the current grant usable. No
  // provider error payload or credential is echoed to the browser.
@@ -221,6 +225,10 @@ try{
   const result=await callback(f,flow);assert.equal(result.status,303);assert.notEqual(redirectResult(result),'pending',mode);assertPrivate({body:result.body,location:result.headers.get('location')},f);
   assert.equal(diagnostics.length,diagnosticStart+1,'One safe diagnostic per failed callback: '+mode);
   const log=JSON.parse(diagnostics.at(-1)[0]);
+  assert.deepEqual(storedDiagnostics(f),[log],mode+' persists exactly the safe console record');
+  const failure=f.sql.prepare('SELECT operation_hash,failed_ms FROM recovery_google_failures').get();
+  assert.equal(failure.operation_hash,f.sql.prepare('SELECT state_hash FROM recovery_google_handshakes').get().state_hash);
+  assert.ok(Number.isSafeInteger(failure.failed_ms)&&failure.failed_ms<=Date.now());
   const expected={
    'exchange-error':{stage:'token_exchange',reason:'provider_request_failed',kind:'token_exchange',providerStatus:400,providerCode:'invalid_grant'},
    'exchange-timeout':{stage:'token_exchange',reason:'provider_request_failed',kind:'token_exchange',providerCode:'network_error'},
@@ -251,6 +259,7 @@ try{
   const f=await fixture(),flow=await begin(f);f.candidateIdentity=candidateIdentity;
   assert.equal(redirectResult(await callback(f,flow)),'failed');
   const log=JSON.parse(diagnostics.at(-1)[0]);assert.equal(log.stage,'candidate_identity');assert.equal(log.reason,reason);
+  assert.deepEqual(storedDiagnostics(f),[log]);
   assert.deepEqual(await credential(f),{refreshToken:f.env.GOOGLE_REFRESH_TOKEN,revision:0});
  }
  // Concurrent callbacks consume a state once; completed flow replay cannot
@@ -294,6 +303,10 @@ try{
    if(scenario==='staged-expired')f.sql.prepare('UPDATE recovery_google_handshakes SET expires_ms=?').run(Date.now()-1);
    else f.mode='identity-error';
    assert.ok((await api(f,'google-complete',{method:'POST'})).status>=400);
+   if(scenario==='complete-identity-error'){
+    assert.deepEqual(storedDiagnostics(f),[JSON.parse(diagnostics.at(-1)[0])]);
+    assert.equal(storedDiagnostics(f)[0].stage,'completion_identity');
+   }
   }
   assert.deepEqual(await credential(f),{refreshToken:f.env.GOOGLE_REFRESH_TOKEN,revision:0});
  }
@@ -304,10 +317,68 @@ try{
   const batch=f.env.RECOVERY_DB.batch;f.env.RECOVERY_DB.batch=async()=>{throw Error('Dummy write unavailable');};
   assert.equal((await api(f,'google-complete',{method:'POST'})).status,503);
   assert.deepEqual(await credential(f),{refreshToken:f.env.GOOGLE_REFRESH_TOKEN,revision:0});
+  assert.equal(JSON.parse(diagnostics.at(-1)[0]).stage,'completion_promotion');
+  assert.deepEqual(storedDiagnostics(f),[],'A failed database cannot promise durable diagnostics');
   f.env.RECOVERY_DB.batch=batch;assert.equal((await api(f,'google-complete',{method:'POST'})).status,200);assert.equal((await credential(f)).revision,1);
-  const before=f.sql.prepare('SELECT * FROM recovery_configuration').all();
-  f.sql.exec(readFileSync(new URL('../recovery/google-connection-migration.sql',import.meta.url),'utf8'));
-  assert.deepEqual(f.sql.prepare('SELECT * FROM recovery_configuration').all(),before,'Migration is idempotent and preserves settings');
+  assert.deepEqual(storedDiagnostics(f),[],'Successful retry retires the same operation failure');
+  const before=f.sql.prepare('SELECT * FROM recovery_configuration').all(),beforeGrant=f.sql.prepare('SELECT * FROM recovery_google_credentials').all(),beforeHandshake=f.sql.prepare('SELECT * FROM recovery_google_handshakes').all();
+  for(let n=0;n<2;n++)f.sql.exec(readFileSync(new URL('../recovery/google-diagnostics-migration.sql',import.meta.url),'utf8'));
+  assert.deepEqual(f.sql.prepare('SELECT * FROM recovery_configuration').all(),before,'Diagnostic migration replay preserves settings');
+  assert.deepEqual(f.sql.prepare('SELECT * FROM recovery_google_credentials').all(),beforeGrant,'Diagnostic migration replay preserves active encrypted grant');
+  assert.deepEqual(f.sql.prepare('SELECT * FROM recovery_google_handshakes').all(),beforeHandshake,'Diagnostic migration replay preserves handshakes');
+ }
+ // Retrying a still-ready flow after a transient validation failure clears
+ // only that resolved operation's durable failure without touching its grant.
+ {
+  const f=await fixture(),flow=await begin(f);assert.equal(redirectResult(await callback(f,flow)),'pending');
+  f.mode='identity-error';assert.equal((await api(f,'google-complete',{method:'POST'})).status,503);
+  assert.equal(storedDiagnostics(f)[0]?.stage,'completion_identity');
+  f.mode='normal';assert.equal((await api(f,'google-complete',{method:'POST'})).status,200);
+  assert.equal((await credential(f)).revision,1);assert.deepEqual(storedDiagnostics(f),[]);
+ }
+ // A late failure write racing with successful completion cannot resurrect a
+ // resolved failure: the durable insert checks the current handshake phase.
+ {
+  const f=await fixture(),flow=await begin(f);assert.equal(redirectResult(await callback(f,flow)),'pending');
+  const prepare=f.env.RECOVERY_DB.prepare,batch=f.env.RECOVERY_DB.batch;
+  let release,started;const waiting=new Promise(resolve=>{started=resolve;}),gate=new Promise(resolve=>{release=resolve;});
+  f.env.RECOVERY_DB.prepare=query=>{const statement=prepare(query);return {bind(...values){const bound=statement.bind(...values);if(query.includes('INSERT INTO recovery_google_failures'))bound.failureWrite=true;return bound;}};};
+  f.env.RECOVERY_DB.batch=async statements=>{if(statements.some(s=>s.failureWrite)){started();await gate;}return batch(statements);};
+  f.mode='identity-error';const failed=api(f,'google-complete',{method:'POST'});await waiting;
+  f.mode='normal';const successful=await api(f,'google-complete',{method:'POST'});assert.equal(successful.status,200);
+  release();assert.equal((await failed).status,503);
+  f.env.RECOVERY_DB.prepare=prepare;f.env.RECOVERY_DB.batch=batch;
+  assert.equal((await credential(f)).revision,1);assert.deepEqual(storedDiagnostics(f),[],'Late rejected attempt must not recreate resolved error');
+ }
+ // Diagnostic sinks are best-effort. An unavailable log sink or failure table
+ // cannot turn a rejected grant into a promotion or prevent safe callback return.
+ for(const sink of ['console','database','both']){
+  const f=await fixture(),flow=await begin(f);f.mode='hostile-exchange';
+  const prepare=f.env.RECOVERY_DB.prepare,savedWarn=console.warn;
+  if(sink!=='console')f.env.RECOVERY_DB.prepare=query=>{if(query.includes('recovery_google_failures'))throw Error(LEAK);return prepare(query);};
+  if(sink!=='database')console.warn=()=>{throw Error(LEAK);};
+  let result;try{result=await callback(f,flow);}finally{console.warn=savedWarn;f.env.RECOVERY_DB.prepare=prepare;}
+  assert.equal(result.status,303);assert.equal(redirectResult(result),'failed');
+  assert.deepEqual(await credential(f),{refreshToken:f.env.GOOGLE_REFRESH_TOKEN,revision:0},sink);
+  assert.equal(f.sql.prepare('SELECT phase FROM recovery_google_handshakes').get().phase,'failed');
+  if(sink==='console')assert.equal(storedDiagnostics(f)[0]?.providerCode,'unrecognized','A broken console does not suppress durable capture');
+ }
+ // Retention bounds the diagnostic store and removes obsolete records; a
+ // replay of the additive migration neither erases evidence nor modifies Auth.
+ {
+  const f=await fixture(),flow=await begin(f);f.mode='exchange-error';
+  const dummy=JSON.stringify({event:'briefbooth_google_oauth',stage:'token_exchange',status:503,reason:'provider_request_failed',kind:'token_exchange',providerStatus:400,providerCode:'invalid_grant'});
+  const put=f.sql.prepare('INSERT INTO recovery_google_failures(operation_hash,failed_ms,diagnostic) VALUES(?,?,?)');
+  put.run('aged-operation',Date.now()-8*86400000,dummy);
+  for(let n=0;n<105;n++)put.run('recent-operation-'+n,Date.now()-200000+n,dummy);
+  assert.equal(redirectResult(await callback(f,flow)),'failed');
+  const rows=f.sql.prepare('SELECT * FROM recovery_google_failures').all();
+  assert.ok(rows.length<=100&&rows.length>0,'Keep at most the latest 100 bounded diagnostics');
+  assert.ok(rows.every(row=>row.failed_ms>=Date.now()-7*86400000),'Drop diagnostics older than seven days');
+  const before=JSON.stringify(rows);
+  for(let n=0;n<2;n++)f.sql.exec(readFileSync(new URL('../recovery/google-diagnostics-migration.sql',import.meta.url),'utf8'));
+  assert.equal(JSON.stringify(f.sql.prepare('SELECT * FROM recovery_google_failures').all()),before,'Migration replay preserves retained evidence');
+  assert.deepEqual(await credential(f),{refreshToken:f.env.GOOGLE_REFRESH_TOKEN,revision:0});
  }
  // Only the explicit safe schema reaches console output. Scan every emitted
  // record against all dummy credentials, browser cookies and account values.
@@ -325,13 +396,15 @@ try{
   if(Object.hasOwn(log,'providerCode'))assert.ok(allowedCodes.has(log.providerCode));
   if(Object.hasOwn(log,'providerStatus'))assert.ok(Number.isInteger(log.providerStatus)&&log.providerStatus>=100&&log.providerStatus<=599);
  }
- const allDiagnostics=JSON.stringify(diagnostics);assert.ok(!allDiagnostics.includes(LEAK));
+ const allStoredDiagnostics=fixtures.flatMap(storedDiagnostics);
+ for(const value of allStoredDiagnostics){for(const key of Object.keys(value))assert.ok(allowedKeys.has(key));assert.equal(value.event,'briefbooth_google_oauth');assert.ok(allowedStages.has(value.stage));assert.ok(allowedReasons.has(value.reason));}
+ const allDiagnostics=JSON.stringify([diagnostics,allStoredDiagnostics]);assert.ok(!allDiagnostics.includes(LEAK));
  assert.ok(!/https?:|@|test-code-|test-candidate-|test-refreshed-|business-google-subject/.test(allDiagnostics),'No URL, email, token, authorization code or subject may be logged');
  for(const f of fixtures){
-  assertPrivate(diagnostics,f);
+  assertPrivate([diagnostics,allStoredDiagnostics],f);
   for(const value of [f.ownerId,f.otherId,f.privateKey,f.env.RECOVERY_CAPABILITY_SECRET,f.env.GOOGLE_CLIENT_ID,...f.cookies.values()])assert.ok(!allDiagnostics.includes(value),'No private identifier or browser binding may be logged');
  }
- console.log('PASS current-owner Google OAuth binding, PKCE, scope/identity validation, encrypted staging, replay protection, D1 grant continuity and sanitized failure diagnostics');
+ console.log('PASS current-owner Google OAuth binding, PKCE, scope/identity validation, encrypted staging, replay protection, D1 grant continuity and bounded durable sanitized failure diagnostics');
 }finally{
  globalThis.fetch=originalFetch;Date.now=originalNow;console.warn=originalWarn;
  for(const f of fixtures){assert.deepEqual(f.unexpected,[],'No legacy RPC, connection writer, worker or unrelated service was contacted');f.sql.close();}

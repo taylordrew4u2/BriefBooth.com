@@ -107,3 +107,11 @@ CREATE TABLE IF NOT EXISTS recovery_google_handshakes (
  created_ms INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS recovery_google_handshakes_expiry ON recovery_google_handshakes(expires_ms);
+
+-- Bounded safe-enum diagnostics survive encrypted handshake cleanup.
+CREATE TABLE IF NOT EXISTS recovery_google_failures (
+ operation_hash TEXT PRIMARY KEY,
+ failed_ms INTEGER NOT NULL,
+ diagnostic TEXT NOT NULL CHECK(length(diagnostic)<=1024)
+);
+CREATE INDEX IF NOT EXISTS recovery_google_failures_time ON recovery_google_failures(failed_ms);

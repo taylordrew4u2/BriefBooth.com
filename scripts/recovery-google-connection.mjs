@@ -15,16 +15,31 @@ const DIAGNOSTIC_PROVIDERS=new Set(['token_exchange','token_refresh','tokeninfo'
 const DIAGNOSTIC_CODES=new Set(['invalid_grant','invalid_client','invalid_request','redirect_uri_mismatch','access_denied','unsupported_grant_type','unauthorized_client','invalid_scope','invalid_token','rate_limit_exceeded','PERMISSION_DENIED','UNAUTHENTICATED','RESOURCE_EXHAUSTED','INVALID_ARGUMENT','NOT_FOUND','INTERNAL','UNAVAILABLE','forbidden','insufficientPermissions','rateLimitExceeded','userRateLimitExceeded','authError','backendError','invalid','notFound','network_error','malformed_response','unrecognized']);
 const DIAGNOSTIC_REASONS=new Set(['scope_set_mismatch','user_id_missing','user_id_invalid','audience_missing','audience_mismatch','issued_to_mismatch','refresh_token_missing','access_token_missing','account_mismatch','provider_request_failed','validation_failed','unexpected_failure']);
 function providerError(operation,status,code){const error=new GoogleConnectionError(503,'Google could not verify the connection. Please try again.');error.diagnostic={provider:operation,provider_status:status,provider_code:DIAGNOSTIC_CODES.has(code)?code:'unrecognized'};return error;}
-function warnFailure(phase,error){
- // Only fixed enums and HTTP numbers enter logs. Never serialize the caught
- // Error, provider payload, request URL, state, identity or credentials.
- const record={event:'briefbooth_google_oauth',stage:DIAGNOSTIC_PHASES.has(phase)?phase:'request_validation',status:error instanceof GoogleConnectionError?error.status:503,reason:DIAGNOSTIC_REASONS.has(error?.reason)?error.reason:error instanceof GoogleConnectionError?'validation_failed':'unexpected_failure'};
+function failureRecord(phase,error){
+ // Only fixed enums and HTTP numbers enter logs or durable diagnostics. Never
+ // serialize Error, provider payload, request URL, state, identity or credentials.
+ const status=error instanceof GoogleConnectionError&&Number.isInteger(error.status)&&error.status>=400&&error.status<=599?error.status:503;
+ const record={event:'briefbooth_google_oauth',stage:DIAGNOSTIC_PHASES.has(phase)?phase:'request_validation',status,reason:DIAGNOSTIC_REASONS.has(error?.reason)?error.reason:error instanceof GoogleConnectionError?'validation_failed':'unexpected_failure'};
  const detail=error instanceof GoogleConnectionError?error.diagnostic:null;
  if(DIAGNOSTIC_PROVIDERS.has(detail?.provider)){record.kind=detail.provider;record.reason='provider_request_failed';}
  if(Number.isInteger(detail?.provider_status)&&detail.provider_status>=100&&detail.provider_status<=599)record.providerStatus=detail.provider_status;
  if(DIAGNOSTIC_CODES.has(detail?.provider_code))record.providerCode=detail.provider_code;
- console.warn(JSON.stringify(record));
+ return record;
 }
+function warnFailure(phase,error){const diagnostic=JSON.stringify(failureRecord(phase,error));try{console.warn(diagnostic);}catch{}return diagnostic;}
+async function retainFailure(env,operationHash,diagnostic){
+ // Called only after a browser-bound handshake was claimed or owner completion
+ // was authenticated. Retention is independent of encrypted handshake cleanup.
+ // The row guard prevents a late failed completion overwriting a completed one.
+ try{
+  const now=Date.now();
+  await env.RECOVERY_DB.batch([
+   env.RECOVERY_DB.prepare("INSERT INTO recovery_google_failures(operation_hash,failed_ms,diagnostic) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM recovery_google_handshakes WHERE state_hash=? AND phase IN ('processing','failed','ready')) ON CONFLICT(operation_hash) DO UPDATE SET failed_ms=excluded.failed_ms,diagnostic=excluded.diagnostic").bind(operationHash,now,diagnostic,operationHash),
+   env.RECOVERY_DB.prepare('DELETE FROM recovery_google_failures WHERE failed_ms<? OR operation_hash NOT IN (SELECT operation_hash FROM recovery_google_failures ORDER BY failed_ms DESC,operation_hash DESC LIMIT 100)').bind(now-7*86400000),
+  ]);
+ }catch{}
+}
+async function clearFailure(env,operationHash){try{await env.RECOVERY_DB.prepare("DELETE FROM recovery_google_failures WHERE operation_hash=? AND EXISTS(SELECT 1 FROM recovery_google_handshakes WHERE state_hash=? AND phase='completed')").bind(operationHash,operationHash).run();}catch{}}
 export const googleConnectionEnabled=env=>env.RECOVERY_GOOGLE_OAUTH_ENABLED==='1';
 function ownerId(env){let config;try{config=JSON.parse(env.RECOVERY_CONFIG_JSON);}catch{fail(503,'Google connection settings are unavailable.');}const id=config?.profile?.id;if(typeof id!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))fail(503,'Google connection settings are unavailable.');return id;}
 function configured(env){if(!env.RECOVERY_DB||typeof env.RECOVERY_CAPABILITY_SECRET!=='string'||env.RECOVERY_CAPABILITY_SECRET.length<32||!env.GOOGLE_CLIENT_ID||!env.GOOGLE_CLIENT_SECRET)fail(503,'Google connection settings are unavailable.');return ownerId(env);}
@@ -116,7 +131,7 @@ async function finish(request,env,trace){
   trace.phase='candidate_stage';
   const staged=await env.RECOVERY_DB.prepare("UPDATE recovery_google_handshakes SET phase='ready',candidate_ciphertext=?,expires_ms=? WHERE state_hash=? AND phase='processing' AND expires_ms>?").bind(candidate,Date.now()+TTL,stateHash,Date.now()).run();if(staged.meta?.changes!==1)return redirect('expired');
   return redirect('pending',browser.value);
- }catch(error){warnFailure(trace.phase,error);trace.logged=true;await env.RECOVERY_DB.prepare("UPDATE recovery_google_handshakes SET phase='failed',candidate_ciphertext=NULL WHERE state_hash=? AND phase='processing'").bind(stateHash).run();return redirect(error instanceof GoogleConnectionError&&error.status===403?'account':error instanceof GoogleConnectionError&&error.message.includes('permissions')?'scope':'failed');}
+ }catch(error){const diagnostic=warnFailure(trace.phase,error);trace.logged=true;await retainFailure(env,stateHash,diagnostic);await env.RECOVERY_DB.prepare("UPDATE recovery_google_handshakes SET phase='failed',candidate_ciphertext=NULL WHERE state_hash=? AND phase='processing'").bind(stateHash).run();return redirect(error instanceof GoogleConnectionError&&error.status===403?'account':error instanceof GoogleConnectionError&&error.message.includes('permissions')?'scope':'failed');}
 }
 export async function finishGoogleConnection(request,env){
  const trace={phase:'request_validation',logged:false};
@@ -128,7 +143,7 @@ export async function finishGoogleConnection(request,env){
 }
 export async function completeGoogleConnection(request,env,authenticatedOwnerId){
  requestAt(request,'POST','/api/recovery/google-complete');const id=ready(env);if(authenticatedOwnerId!==id)fail(403,'This account does not manage this Google connection.');const browser=cookieValue(request);const flow=browser&&await handshake(request,env,browser.state);if(!flow)fail(409,'This connection request expired. Start reconnection again.');
- const {row,stateHash}=flow;if(row.phase==='completed')return json({connected:true,revision:row.completed_revision},{'Set-Cookie':cookie(browser.value)});if(row.phase!=='ready'||!row.candidate_ciphertext)fail(409,'Finish Google authorization before completing the connection.');
+ const {row,stateHash}=flow;if(row.phase==='completed'){await clearFailure(env,stateHash);return json({connected:true,revision:row.completed_revision},{'Set-Cookie':cookie(browser.value)});}if(row.phase!=='ready'||!row.candidate_ciphertext)fail(409,'Finish Google authorization before completing the connection.');
  let phase='completion_validation';
  try{
  const envelope=await open(env,id,'recovery_google_handshakes',row.verifier_ciphertext);await unchanged(env,row,envelope);const candidate=await open(env,id,'recovery_google_candidate',row.candidate_ciphertext);if(!secret(candidate.refreshToken)||candidate.clientId!==env.GOOGLE_CLIENT_ID||candidate.userId!==envelope.userId)fail(503,'The pending Google connection could not be verified.');
@@ -140,13 +155,13 @@ export async function completeGoogleConnection(request,env,authenticatedOwnerId)
   ?env.RECOVERY_DB.prepare(`INSERT INTO recovery_google_credentials(owner_id,revision,token_ciphertext,updated_ms,operation_hash) SELECT ?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM recovery_google_credentials WHERE owner_id=?) AND ${valid}`).bind(id,revision,ciphertext,now,stateHash,id,stateHash,id,now)
   :env.RECOVERY_DB.prepare(`UPDATE recovery_google_credentials SET revision=?,token_ciphertext=?,updated_ms=?,operation_hash=? WHERE owner_id=? AND revision=? AND ${valid}`).bind(revision,ciphertext,now,stateHash,id,row.baseline_revision,stateHash,id,now);
  await env.RECOVERY_DB.batch([promotion,env.RECOVERY_DB.prepare("UPDATE recovery_google_handshakes SET phase='completed',completed_revision=?,candidate_ciphertext=NULL WHERE state_hash=? AND phase='ready' AND EXISTS(SELECT 1 FROM recovery_google_credentials WHERE owner_id=? AND revision=? AND operation_hash=?)").bind(revision,stateHash,id,revision,stateHash)]);
- const completed=await env.RECOVERY_DB.prepare('SELECT phase,completed_revision FROM recovery_google_handshakes WHERE state_hash=?').bind(stateHash).first();if(completed?.phase==='completed')return json({connected:true,revision:completed.completed_revision},{'Set-Cookie':cookie(browser.value)});fail(409,'Your Google connection changed. Start reconnection again.');
+ const completed=await env.RECOVERY_DB.prepare('SELECT phase,completed_revision FROM recovery_google_handshakes WHERE state_hash=?').bind(stateHash).first();if(completed?.phase==='completed'){await clearFailure(env,stateHash);return json({connected:true,revision:completed.completed_revision},{'Set-Cookie':cookie(browser.value)});}fail(409,'Your Google connection changed. Start reconnection again.');
  }catch(error){
   // A second completion may have read the ready row just before the first
   // committed. Reconcile that same operation; never write over a later one.
-  const completed=await env.RECOVERY_DB.prepare("SELECT completed_revision FROM recovery_google_handshakes WHERE state_hash=? AND owner_id=? AND phase='completed' AND expires_ms>?").bind(stateHash,id,Date.now()).first();
-  if(completed)return json({connected:true,revision:completed.completed_revision},{'Set-Cookie':cookie(browser.value)});
-  warnFailure(phase,error);
+ let completed;try{completed=await env.RECOVERY_DB.prepare("SELECT completed_revision FROM recovery_google_handshakes WHERE state_hash=? AND owner_id=? AND phase='completed' AND expires_ms>?").bind(stateHash,id,Date.now()).first();}catch{}
+ if(completed){await clearFailure(env,stateHash);return json({connected:true,revision:completed.completed_revision},{'Set-Cookie':cookie(browser.value)});}
+ const diagnostic=warnFailure(phase,error);await retainFailure(env,stateHash,diagnostic);
   throw error;
  }
 }

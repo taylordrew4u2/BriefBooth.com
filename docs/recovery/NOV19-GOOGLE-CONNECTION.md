@@ -41,11 +41,23 @@ credential is added. Do not rotate that capability secret without resealing
 these records and accounting for existing private booking links. Expired
 handshakes are unusable and are removed in bounded batches on new attempts.
 
+Failure diagnostics use only allowlisted stage/reason/provider-code enums and
+numeric HTTP statuses. The existing D1 database also retains that same safe
+JSON, a timestamp and the hashed operation key in `recovery_google_failures`,
+so a live-log session ending cannot erase the evidence. No token, raw state,
+account identity, URL, provider payload or caught-error text is stored there.
+Failure writes prune records older than seven days and keep at most the latest
+100; this cleanup runs on writes, not on an automatic idle timer. Successful
+completion clears its own failure best-effort. Diagnostics cannot promote a
+grant, change authorization checks or turn a successful completion into failure.
+
 ## Release order and rollback constraints
 
 1. Inspect current production and retain the existing D1 binding and secrets.
 2. Apply `recovery/google-connection-migration.sql` to the existing database.
    The migration is additive and idempotent; it does not seed/copy tokens.
+   Apply the additive, idempotent `recovery/google-diagnostics-migration.sql`
+   before deploying durable diagnostics.
 3. Publish the tested build. Enable `RECOVERY_GOOGLE_OAUTH_ENABLED=1` only on
    the existing project. A new grant is not stored until the owner flow runs.
 4. Verify the actual owner UI, Google destination, exact permissions, callback
