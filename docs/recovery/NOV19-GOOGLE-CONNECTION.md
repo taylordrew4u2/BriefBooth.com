@@ -21,6 +21,9 @@ Google connection row or calls a legacy Google RPC.
   use that verified, encrypted identity pin, including when repairing a revoked
   refresh token. Missing identity or a different account fails closed; no
   identity scope, new account, marker event or unrelated Calendar data is used.
+  Historical scopes on that initial grant do not block reaching consent:
+  only its account/client identity is used as the baseline. The new requested
+  grant, refreshed candidate and completion still require the exact two scopes.
 - The callback verifies the candidate and its refresh, scope set, account,
   free/busy and event-access responses, then stages it. It does not activate it.
 - A same-origin request with the current verified owner sign-in and browser

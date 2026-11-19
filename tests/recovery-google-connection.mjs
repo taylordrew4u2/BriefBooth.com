@@ -58,7 +58,7 @@ globalThis.fetch=async(input,options={})=>{
   if(candidate&&f.mode==='identity-timeout')throw Error('Dummy identity timeout');
   if(candidate&&f.mode==='identity-error')return Response.json({error:'invalid_token'},{status:400});
   if(candidate&&f.mode==='malformed-identity')return Response.json(null);
-  return Response.json({user_id:candidate&&f.mode==='wrong-account'?'wrong-google-subject':'business-google-subject',audience:candidate&&f.mode==='wrong-audience'?'another-client':f.env.GOOGLE_CLIENT_ID,scope:(candidate&&f.mode==='missing-scope'?SCOPES.slice(0,1):candidate&&f.mode==='extra-scope'?[...SCOPES,'https://www.googleapis.com/auth/userinfo.email']:SCOPES).join(' '),expires_in:3600});
+  return Response.json({user_id:candidate&&f.mode==='wrong-account'?'wrong-google-subject':'business-google-subject',audience:candidate&&f.mode==='wrong-audience'?'another-client':f.env.GOOGLE_CLIENT_ID,scope:(candidate&&f.mode==='missing-scope'?SCOPES.slice(0,1):candidate&&f.mode==='extra-scope'?[...SCOPES,'https://www.googleapis.com/auth/userinfo.email']:SCOPES).join(' '),expires_in:3600,...(!candidate?f.baselineIdentity||{}:{})});
  }
  if(url.origin==='https://www.googleapis.com'&&url.pathname==='/calendar/v3/freeBusy'){
   const refresh=f.accessRefresh.get(options.headers.Authorization?.slice(7));assert.ok(refresh);
@@ -112,6 +112,45 @@ try{
   for(const origin of [null,'https://evil.example.invalid'])assert.equal((await api(f,'google-connect',{method:'POST',origin})).status,403);
   assert.equal(f.exchangeCount,0);assert.equal(f.calls.filter(c=>c.url.includes('googleapis.com')).length,0);
   assert.ok([401,403].includes((await api(f,'google-status',{token:'header.other.signature'})).status));
+ }
+ // Historical permissions establish the previous account's identity, not
+ // what the replacement is allowed to request. A legacy grant must remain
+ // reconnectable without carrying any broader permissions into the new URL.
+ for(const scope of [
+  'https://www.googleapis.com/auth/calendar',
+  [...SCOPES,'openid','https://www.googleapis.com/auth/userinfo.email'].join(' '),
+  '',
+  undefined,
+ ]){
+  const f=await fixture();f.baselineIdentity={scope};const flow=await begin(f);
+  assert.deepEqual(flow.url.searchParams.get('scope').split(' ').sort(),[...SCOPES].sort());
+  assert.notEqual(flow.url.searchParams.get('include_granted_scopes'),'true','Do not deliberately merge historical permissions into the new grant');
+  assert.deepEqual(await credential(f),{refreshToken:f.env.GOOGLE_REFRESH_TOKEN,revision:0});
+  assert.equal(redirectResult(await callback(f,flow)),'pending');
+  assert.equal((await api(f,'google-complete',{method:'POST'})).status,200);
+  assert.equal((await credential(f)).revision,1);
+ }
+ // Relaxing historical scope checks cannot relax its trusted Google identity
+ // binding. Reject mismatched clients and absent/invalid Google subject IDs.
+ for(const baselineIdentity of [
+  {audience:'unrelated-oauth-client'},
+  {audience:undefined},
+  {issued_to:'unrelated-oauth-client'},
+  {user_id:undefined},
+  {user_id:''},
+  {user_id:42},
+ ]){
+  const f=await fixture();f.baselineIdentity={scope:'legacy-permission',...baselineIdentity};
+  const denied=await api(f,'google-connect',{method:'POST'});assert.equal(denied.status,400);
+  assert.equal(f.sql.prepare('SELECT count(*) n FROM recovery_google_handshakes').get().n,0);
+  assert.equal(f.exchangeCount,0);assert.deepEqual(await credential(f),{refreshToken:f.env.GOOGLE_REFRESH_TOKEN,revision:0});
+ }
+ // The exception applies only to the old grant. Broader candidate scopes must
+ // still be rejected even when those same scopes existed in the old grant.
+ {
+  const f=await fixture();f.baselineIdentity={scope:[...SCOPES,'https://www.googleapis.com/auth/userinfo.email'].join(' ')};
+  const flow=await begin(f);f.mode='extra-scope';const denied=await callback(f,flow);
+  assert.equal(redirectResult(denied),'scope');assert.deepEqual(await credential(f),{refreshToken:f.env.GOOGLE_REFRESH_TOKEN,revision:0});
  }
  // Only the existing registered return URL and scopes enter Google's consent.
  {

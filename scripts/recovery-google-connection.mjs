@@ -29,13 +29,13 @@ function json(value,headers={}){return Response.json(value,{headers:{'Cache-Cont
 function redirect(result,value){return new Response(null,{status:303,headers:{Location:ORIGIN+'/studio/?google='+result,'Cache-Control':'no-store','Referrer-Policy':'no-referrer',...(value?{'Set-Cookie':cookie(value)}:{})}});}
 async function provider(url,options={}){let response;try{response=await fetch(url,{...options,redirect:'manual',signal:AbortSignal.timeout(10000)});}catch{fail(503,'Google could not verify the connection. Please try again.');}if(!response.ok)fail(503,'Google could not verify the connection. Please try again.');let data;try{data=await response.json();}catch{fail(503,'Google returned an incomplete connection response.');}if(!data||typeof data!=='object'||Array.isArray(data))fail(503,'Google returned an incomplete connection response.');return data;}
 async function refresh(env,refreshToken){const data=await provider('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,refresh_token:refreshToken,grant_type:'refresh_token'})});if(!secret(data.access_token))fail(503,'Google did not return a usable connection.');return data;}
-async function tokenIdentity(env,token){
+async function tokenIdentity(env,token,requiredScopeValidation=true){
  // Google's OAuth2 v2 discovery document defines POST and access_token in the
  // query, with user_id/audience independent of optional email/profile scopes.
  const url=new URL('https://www.googleapis.com/oauth2/v2/tokeninfo');url.searchParams.set('access_token',token);
  const info=await provider(url.href,{method:'POST'});
  const scopes=new Set(typeof info.scope==='string'?info.scope.split(/\s+/).filter(Boolean):[]);
- if(scopes.size!==SCOPES.length||!SCOPES.every(s=>scopes.has(s)))fail(400,'Allow only both requested Calendar permissions to connect Google.');
+ if(requiredScopeValidation&&(scopes.size!==SCOPES.length||!SCOPES.every(s=>scopes.has(s))))fail(400,'Allow only both requested Calendar permissions to connect Google.');
  if(typeof info.user_id!=='string'||!info.user_id||info.user_id.length>256||info.audience!==env.GOOGLE_CLIENT_ID||(info.issued_to!==undefined&&info.issued_to!==env.GOOGLE_CLIENT_ID))fail(400,'Google could not verify the existing business account.');
  return {userId:info.user_id,audience:info.audience};
 }
@@ -56,7 +56,9 @@ export async function beginGoogleConnection(request,env,authenticatedOwnerId){
  requestAt(request,'POST','/api/recovery/google-connect');const id=ready(env);if(authenticatedOwnerId!==id)fail(403,'This account does not manage this Google connection.');
  await env.RECOVERY_DB.prepare('DELETE FROM recovery_google_handshakes WHERE state_hash IN (SELECT state_hash FROM recovery_google_handshakes WHERE expires_ms<=? ORDER BY expires_ms LIMIT 100)').bind(Date.now()).run();
  const credential=await readGoogleCredential(env);let identity;
- if(credential.revision===0){const access=await refresh(env,credential.refreshToken);identity=await tokenIdentity(env,access.access_token);}
+ // The old grant establishes identity only; its historical scope set is not
+ // the new grant being requested. Every candidate and completion stays strict.
+ if(credential.revision===0){const access=await refresh(env,credential.refreshToken);identity=await tokenIdentity(env,access.access_token,false);}
  else{
   // This identity was verified before the earlier promotion. Keeping it sealed
   // allows repairing a revoked token without guessing or expanding scopes.
