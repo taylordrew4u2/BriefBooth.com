@@ -8,6 +8,10 @@ import {readGoogleCredential} from '../scripts/recovery-google-connection.mjs';
 const ORIGIN='https://briefbooth.com';
 const SCOPES=['https://www.googleapis.com/auth/calendar.freebusy','https://www.googleapis.com/auth/calendar.events.owned'];
 const originalFetch=globalThis.fetch;
+const originalWarn=console.warn;
+const diagnostics=[];
+const LEAK='MUST-NOT-LOG-https://private.example.invalid/?code=secret-access-token-owner@example.invalid';
+console.warn=(...args)=>diagnostics.push(args);
 const originalNow=Date.now;
 const fixtures=[];
 let active;
@@ -44,7 +48,8 @@ globalThis.fetch=async(input,options={})=>{
    assert.equal(params.get('redirect_uri'),ORIGIN+'/api/google/callback');
    assert.match(params.get('code_verifier')||'',/^[A-Za-z0-9_-]{43,128}$/);
    if(f.mode==='exchange-error')return Response.json({error:'invalid_grant'},{status:400});
-   if(f.mode==='exchange-timeout')throw Error('Dummy timeout');
+   if(f.mode==='exchange-timeout')throw Error(LEAK);
+   if(f.mode==='hostile-exchange')return Response.json({error:LEAK,error_description:LEAK,access_token:LEAK},{status:400});
    if(f.mode==='malformed-exchange')return new Response('{',{headers:{'Content-Type':'application/json'}});
    const refresh='test-candidate-refresh-'+params.get('code'),access='test-candidate-access-'+params.get('code');f.codeRefresh.set(params.get('code'),refresh);f.accessRefresh.set(access,refresh);
    return Response.json({access_token:access,...(f.mode==='missing-refresh'?{}:{refresh_token:refresh}),expires_in:3600,scope:(f.mode==='missing-scope'?SCOPES.slice(0,1):SCOPES).join(' '),token_type:'Bearer'});
@@ -58,7 +63,7 @@ globalThis.fetch=async(input,options={})=>{
   if(candidate&&f.mode==='identity-timeout')throw Error('Dummy identity timeout');
   if(candidate&&f.mode==='identity-error')return Response.json({error:'invalid_token'},{status:400});
   if(candidate&&f.mode==='malformed-identity')return Response.json(null);
-  return Response.json({user_id:candidate&&f.mode==='wrong-account'?'wrong-google-subject':'business-google-subject',audience:candidate&&f.mode==='wrong-audience'?'another-client':f.env.GOOGLE_CLIENT_ID,scope:(candidate&&f.mode==='missing-scope'?SCOPES.slice(0,1):candidate&&f.mode==='extra-scope'?[...SCOPES,'https://www.googleapis.com/auth/userinfo.email']:SCOPES).join(' '),expires_in:3600,...(!candidate?f.baselineIdentity||{}:{})});
+  return Response.json({user_id:candidate&&f.mode==='wrong-account'?'wrong-google-subject':'business-google-subject',audience:candidate&&f.mode==='wrong-audience'?'another-client':f.env.GOOGLE_CLIENT_ID,scope:(candidate&&f.mode==='missing-scope'?SCOPES.slice(0,1):candidate&&f.mode==='extra-scope'?[...SCOPES,'https://www.googleapis.com/auth/userinfo.email']:SCOPES).join(' '),expires_in:3600,...(candidate?f.candidateIdentity||{}:f.baselineIdentity||{})});
  }
  if(url.origin==='https://www.googleapis.com'&&url.pathname==='/calendar/v3/freeBusy'){
   const refresh=f.accessRefresh.get(options.headers.Authorization?.slice(7));assert.ok(refresh);
@@ -210,12 +215,43 @@ try{
  }
  // Every provider validation failure leaves the current grant usable. No
  // provider error payload or credential is echoed to the browser.
- for(const mode of ['exchange-error','exchange-timeout','malformed-exchange','missing-refresh','missing-scope','extra-scope','identity-timeout','identity-error','malformed-identity','wrong-account','wrong-audience','calendar-error','event-access-error']){
+ for(const mode of ['exchange-error','exchange-timeout','hostile-exchange','malformed-exchange','missing-refresh','missing-scope','extra-scope','identity-timeout','identity-error','malformed-identity','wrong-account','wrong-audience','calendar-error','event-access-error']){
   const f=await fixture(),flow=await begin(f);f.mode=mode;
+  const diagnosticStart=diagnostics.length;
   const result=await callback(f,flow);assert.equal(result.status,303);assert.notEqual(redirectResult(result),'pending',mode);assertPrivate({body:result.body,location:result.headers.get('location')},f);
+  assert.equal(diagnostics.length,diagnosticStart+1,'One safe diagnostic per failed callback: '+mode);
+  const log=JSON.parse(diagnostics.at(-1)[0]);
+  const expected={
+   'exchange-error':{stage:'token_exchange',reason:'provider_request_failed',kind:'token_exchange',providerStatus:400,providerCode:'invalid_grant'},
+   'exchange-timeout':{stage:'token_exchange',reason:'provider_request_failed',kind:'token_exchange',providerCode:'network_error'},
+   'hostile-exchange':{stage:'token_exchange',reason:'provider_request_failed',kind:'token_exchange',providerStatus:400,providerCode:'unrecognized'},
+   'malformed-exchange':{stage:'token_exchange',reason:'provider_request_failed',kind:'token_exchange',providerStatus:200,providerCode:'malformed_response'},
+   'missing-refresh':{stage:'candidate_tokens',reason:'refresh_token_missing'},
+   'missing-scope':{stage:'candidate_identity',reason:'scope_set_mismatch'},
+   'extra-scope':{stage:'candidate_identity',reason:'scope_set_mismatch'},
+   'wrong-account':{stage:'identity_match',reason:'account_mismatch'},
+   'wrong-audience':{stage:'candidate_identity',reason:'audience_mismatch'},
+   'calendar-error':{stage:'calendar_probe',reason:'provider_request_failed',kind:'freebusy',providerStatus:403,providerCode:'forbidden'},
+  }[mode];
+  if(expected)for(const [key,value] of Object.entries(expected))assert.equal(log[key],value,mode+' diagnostic '+key);
+  if(mode==='exchange-timeout')assert.ok(!Object.hasOwn(log,'providerStatus'),'Network exceptions must not invent an HTTP response');
   assert.deepEqual(await credential(f),{refreshToken:f.env.GOOGLE_REFRESH_TOKEN,revision:0},mode);
   f.mode='normal';const day=new Date(Date.now()+4*86400000).toISOString().slice(0,10);
   const slots=await api(f,'slots?service='+f.serviceId+'&day='+day,{token:null});assert.equal(slots.status,200,mode+' must not interrupt existing bookings');
+ }
+ // Diagnostics distinguish missing/malformed identity claims without emitting
+ // the account identifier or attacker-controlled claim values.
+ for(const [candidateIdentity,reason] of [
+  [{user_id:undefined},'user_id_missing'],
+  [{user_id:42},'user_id_invalid'],
+  [{audience:undefined},'audience_missing'],
+  [{audience:LEAK},'audience_mismatch'],
+  [{issued_to:LEAK},'issued_to_mismatch'],
+ ]){
+  const f=await fixture(),flow=await begin(f);f.candidateIdentity=candidateIdentity;
+  assert.equal(redirectResult(await callback(f,flow)),'failed');
+  const log=JSON.parse(diagnostics.at(-1)[0]);assert.equal(log.stage,'candidate_identity');assert.equal(log.reason,reason);
+  assert.deepEqual(await credential(f),{refreshToken:f.env.GOOGLE_REFRESH_TOKEN,revision:0});
  }
  // Concurrent callbacks consume a state once; completed flow replay cannot
  // exchange again or advance the connection revision.
@@ -273,8 +309,30 @@ try{
   f.sql.exec(readFileSync(new URL('../recovery/google-connection-migration.sql',import.meta.url),'utf8'));
   assert.deepEqual(f.sql.prepare('SELECT * FROM recovery_configuration').all(),before,'Migration is idempotent and preserves settings');
  }
- console.log('PASS current-owner Google OAuth binding, PKCE, scope/identity validation, encrypted staging, replay protection and D1 grant continuity');
+ // Only the explicit safe schema reaches console output. Scan every emitted
+ // record against all dummy credentials, browser cookies and account values.
+ const allowedKeys=new Set(['event','stage','status','reason','kind','providerStatus','providerCode']);
+ const allowedStages=new Set(['request_validation','state_lookup','state_claim','code_validation','state_decrypt','baseline_check','token_exchange','candidate_tokens','candidate_identity','candidate_refresh','refreshed_identity','identity_match','calendar_probe','baseline_recheck','candidate_encrypt','candidate_stage','completion_validation','completion_refresh','completion_identity','completion_promotion']);
+ const allowedReasons=new Set(['scope_set_mismatch','user_id_missing','user_id_invalid','audience_missing','audience_mismatch','issued_to_mismatch','refresh_token_missing','access_token_missing','account_mismatch','provider_request_failed','validation_failed','unexpected_failure']);
+ const allowedKinds=new Set(['token_exchange','token_refresh','tokeninfo','freebusy','events_list']);
+ const allowedCodes=new Set(['invalid_grant','invalid_client','invalid_request','redirect_uri_mismatch','access_denied','unsupported_grant_type','unauthorized_client','invalid_scope','invalid_token','rate_limit_exceeded','PERMISSION_DENIED','UNAUTHENTICATED','RESOURCE_EXHAUSTED','INVALID_ARGUMENT','NOT_FOUND','INTERNAL','UNAVAILABLE','forbidden','insufficientPermissions','rateLimitExceeded','userRateLimitExceeded','authError','backendError','invalid','notFound','network_error','malformed_response','unrecognized']);
+ for(const args of diagnostics){
+  assert.equal(args.length,1);assert.equal(typeof args[0],'string');const log=JSON.parse(args[0]);
+  assert.equal(log.event,'briefbooth_google_oauth');assert.ok(allowedStages.has(log.stage));assert.ok(allowedReasons.has(log.reason));
+  for(const key of Object.keys(log))assert.ok(allowedKeys.has(key),'Unexpected diagnostic field '+key);
+  assert.ok(Number.isInteger(log.status)&&log.status>=100&&log.status<=599);
+  if(Object.hasOwn(log,'kind'))assert.ok(allowedKinds.has(log.kind));
+  if(Object.hasOwn(log,'providerCode'))assert.ok(allowedCodes.has(log.providerCode));
+  if(Object.hasOwn(log,'providerStatus'))assert.ok(Number.isInteger(log.providerStatus)&&log.providerStatus>=100&&log.providerStatus<=599);
+ }
+ const allDiagnostics=JSON.stringify(diagnostics);assert.ok(!allDiagnostics.includes(LEAK));
+ assert.ok(!/https?:|@|test-code-|test-candidate-|test-refreshed-|business-google-subject/.test(allDiagnostics),'No URL, email, token, authorization code or subject may be logged');
+ for(const f of fixtures){
+  assertPrivate(diagnostics,f);
+  for(const value of [f.ownerId,f.otherId,f.privateKey,f.env.RECOVERY_CAPABILITY_SECRET,f.env.GOOGLE_CLIENT_ID,...f.cookies.values()])assert.ok(!allDiagnostics.includes(value),'No private identifier or browser binding may be logged');
+ }
+ console.log('PASS current-owner Google OAuth binding, PKCE, scope/identity validation, encrypted staging, replay protection, D1 grant continuity and sanitized failure diagnostics');
 }finally{
- globalThis.fetch=originalFetch;Date.now=originalNow;
+ globalThis.fetch=originalFetch;Date.now=originalNow;console.warn=originalWarn;
  for(const f of fixtures){assert.deepEqual(f.unexpected,[],'No legacy RPC, connection writer, worker or unrelated service was contacted');f.sql.close();}
 }
