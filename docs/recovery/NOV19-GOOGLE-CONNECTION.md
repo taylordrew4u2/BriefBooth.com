@@ -89,4 +89,29 @@ resubmit or alter the existing verification request. No new evidence recording
 has been produced by this change. Existing service capacity remains finite;
 no permanently-free/unlimited claim is made.
 
-Official tokeninfo contract: https://www.googleapis.com/discovery/v1/apis/oauth2/v2/rest
+## November 20 contract and sign-in corrections
+
+The original token check depended on the legacy `user_id` response field.
+Google's maintained authentication library describes that field as optional
+and dependent on profile scope, which this flow does not request. The current
+implementation uses Google's modern token-information endpoint and its
+`sub`/`aud` claims, plus `azp` when present, following the official library's
+POST/Bearer request. A missing subject or wrong account/client still fails
+closed. No profile, email, OpenID or additional Calendar scope is requested.
+Existing encrypted `userId` fields continue to hold the verified Google subject.
+
+Sign-in also preserves the fixed `google=pending` completion marker. Otherwise
+an owner whose app session expired during consent could sign in successfully
+but never reach the staged-grant completion step. Only that fixed marker and
+the existing connection intent survive; codes, tokens, state and arbitrary
+return destinations are not forwarded. Server-side owner and browser checks
+remain mandatory.
+
+These are code and provider-contract corrections. The previous failed live
+attempt predates durable diagnostics, so its exact cause is not established.
+A new successful consent/callback/owner-completion sequence is still required
+before claiming live reconnection or recording the corrected review evidence.
+
+Primary references:
+- https://docs.cloud.google.com/docs/authentication/token-types#user_access_tokens
+- https://github.com/googleapis/google-auth-library-nodejs/blob/main/src/auth/oauth2client.ts

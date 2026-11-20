@@ -59,13 +59,13 @@ globalThis.fetch=async(input,options={})=>{
   assert.equal(params.get('grant_type'),'refresh_token');const refresh=params.get('refresh_token');if(refresh===f.blockedRefresh)return Response.json({error:'invalid_grant'},{status:400});const access='test-refreshed-access-'+refresh;f.accessRefresh.set(access,refresh);
   return Response.json({access_token:access,expires_in:3600,scope:SCOPES.join(' '),token_type:'Bearer'});
  }
- if(url.origin==='https://www.googleapis.com'&&url.pathname==='/oauth2/v2/tokeninfo'){
-  assert.equal(options.method,'POST');const token=url.searchParams.get('access_token'),refresh=f.accessRefresh.get(token),candidate=refresh!==f.env.GOOGLE_REFRESH_TOKEN;
+ if(url.origin==='https://oauth2.googleapis.com'&&url.pathname==='/tokeninfo'){
+  assert.equal(options.method,'POST');assert.equal(url.search,'','Introspection must never put access tokens in URLs');assert.equal(options.headers['Content-Type'],'application/x-www-form-urlencoded;charset=UTF-8');const token=options.headers.Authorization?.slice(7),refresh=f.accessRefresh.get(token),candidate=refresh!==f.env.GOOGLE_REFRESH_TOKEN;
   assert.ok(refresh,'Only a token obtained from a verified exchange may be inspected');
   if(candidate&&f.mode==='identity-timeout')throw Error('Dummy identity timeout');
   if(candidate&&f.mode==='identity-error')return Response.json({error:'invalid_token'},{status:400});
   if(candidate&&f.mode==='malformed-identity')return Response.json(null);
-  return Response.json({user_id:candidate&&f.mode==='wrong-account'?'wrong-google-subject':'business-google-subject',audience:candidate&&f.mode==='wrong-audience'?'another-client':f.env.GOOGLE_CLIENT_ID,scope:(candidate&&f.mode==='missing-scope'?SCOPES.slice(0,1):candidate&&f.mode==='extra-scope'?[...SCOPES,'https://www.googleapis.com/auth/userinfo.email']:SCOPES).join(' '),expires_in:3600,...(candidate?f.candidateIdentity||{}:f.baselineIdentity||{})});
+  return Response.json({sub:candidate&&f.mode==='wrong-account'?'wrong-google-subject':'business-google-subject',aud:candidate&&f.mode==='wrong-audience'?'another-client':f.env.GOOGLE_CLIENT_ID,azp:f.env.GOOGLE_CLIENT_ID,scope:(candidate&&f.mode==='missing-scope'?SCOPES.slice(0,1):candidate&&f.mode==='extra-scope'?[...SCOPES,'https://www.googleapis.com/auth/userinfo.email']:SCOPES).join(' '),expires_in:3600,...(candidate?f.candidateIdentity||{}:f.baselineIdentity||{}),...(candidate&&token.startsWith('test-refreshed-access-')?f.refreshedIdentity||{}:{})});
  }
  if(url.origin==='https://www.googleapis.com'&&url.pathname==='/calendar/v3/freeBusy'){
   const refresh=f.accessRefresh.get(options.headers.Authorization?.slice(7));assert.ok(refresh);
@@ -121,6 +121,21 @@ try{
   assert.equal(f.exchangeCount,0);assert.equal(f.calls.filter(c=>c.url.includes('googleapis.com')).length,0);
   assert.ok([401,403].includes((await api(f,'google-status',{token:'header.other.signature'})).status));
  }
+ // The normal provider fixture follows modern tokeninfo: sub/aud, optionally
+ // azp, and no legacy user_id/audience or profile/email fields. No extra scope
+ // or fallback endpoint is needed to validate and promote this grant.
+ for(const withAuthorizedParty of [false,true]){
+  const f=await fixture();
+  if(!withAuthorizedParty){f.baselineIdentity={azp:undefined};f.candidateIdentity={azp:undefined};}
+  const flow=await begin(f);
+  assert.deepEqual(flow.url.searchParams.get('scope').split(' ').sort(),[...SCOPES].sort());
+  assert.equal(redirectResult(await callback(f,flow)),'pending');
+  assert.equal((await api(f,'google-complete',{method:'POST'})).status,200);
+  assert.equal((await credential(f)).revision,1);
+  const infoCalls=f.calls.filter(c=>c.url==='https://oauth2.googleapis.com/tokeninfo');
+  assert.equal(infoCalls.length,4,'Inspect baseline, exchanged, refreshed and completion tokens');
+  assert.ok(infoCalls.every(c=>c.method==='POST'&&c.authorization.startsWith('Bearer ')));
+ }
  // Historical permissions establish the previous account's identity, not
  // what the replacement is allowed to request. A legacy grant must remain
  // reconnectable without carrying any broader permissions into the new URL.
@@ -141,12 +156,22 @@ try{
  // Relaxing historical scope checks cannot relax its trusted Google identity
  // binding. Reject mismatched clients and absent/invalid Google subject IDs.
  for(const baselineIdentity of [
-  {audience:'unrelated-oauth-client'},
-  {audience:undefined},
-  {issued_to:'unrelated-oauth-client'},
-  {user_id:undefined},
-  {user_id:''},
-  {user_id:42},
+  {aud:'unrelated-oauth-client'},
+  {aud:undefined},
+  {aud:null},
+  {aud:''},
+  {aud:42},
+  {aud:[]},
+  {azp:'unrelated-oauth-client'},
+  {azp:null},
+  {sub:undefined},
+  {sub:null},
+  {sub:''},
+  {sub:' '},
+  {sub:'contains\ncontrol'},
+  {sub:'x'.repeat(257)},
+  {sub:42},
+  {sub:{}},
  ]){
   const f=await fixture();f.baselineIdentity={scope:'legacy-permission',...baselineIdentity};
   const denied=await api(f,'google-connect',{method:'POST'});assert.equal(denied.status,400);
@@ -250,17 +275,66 @@ try{
  // Diagnostics distinguish missing/malformed identity claims without emitting
  // the account identifier or attacker-controlled claim values.
  for(const [candidateIdentity,reason] of [
-  [{user_id:undefined},'user_id_missing'],
-  [{user_id:42},'user_id_invalid'],
-  [{audience:undefined},'audience_missing'],
-  [{audience:LEAK},'audience_mismatch'],
-  [{issued_to:LEAK},'issued_to_mismatch'],
+  [{sub:undefined},'subject_missing'],
+  [{sub:null},'subject_missing'],
+  [{sub:''},'subject_missing'],
+  [{sub:42},'subject_invalid'],
+  [{sub:{}},'subject_invalid'],
+  [{sub:' '},'subject_invalid'],
+  [{sub:'contains\u0000control'},'subject_invalid'],
+  [{sub:'x'.repeat(257)},'subject_invalid'],
+  [{aud:undefined},'audience_missing'],
+  [{aud:null},'audience_missing'],
+  [{aud:''},'audience_missing'],
+  [{aud:42},'audience_invalid'],
+  [{aud:[]},'audience_invalid'],
+  [{aud:LEAK},'audience_mismatch'],
+  [{azp:LEAK},'authorized_party_mismatch'],
+  [{azp:null},'authorized_party_mismatch'],
+  [{azp:[]},'authorized_party_mismatch'],
  ]){
   const f=await fixture(),flow=await begin(f);f.candidateIdentity=candidateIdentity;
   assert.equal(redirectResult(await callback(f,flow)),'failed');
   const log=JSON.parse(diagnostics.at(-1)[0]);assert.equal(log.stage,'candidate_identity');assert.equal(log.reason,reason);
   assert.deepEqual(storedDiagnostics(f),[log]);
   assert.deepEqual(await credential(f),{refreshToken:f.env.GOOGLE_REFRESH_TOKEN,revision:0});
+ }
+ // Never fall back to legacy claims or an email when the modern subject or
+ // audience is missing. Valid-looking legacy fields do not authorize a grant.
+ for(const missing of ['sub','aud']){
+  const f=await fixture(),flow=await begin(f);
+  f.candidateIdentity={sub:'business-google-subject',aud:f.env.GOOGLE_CLIENT_ID,user_id:'business-google-subject',audience:f.env.GOOGLE_CLIENT_ID,issued_to:f.env.GOOGLE_CLIENT_ID,email:'admin@example.invalid',[missing]:undefined};
+  assert.equal(redirectResult(await callback(f,flow)),'failed');
+  assert.equal(storedDiagnostics(f)[0].reason,missing==='sub'?'subject_missing':'audience_missing');
+  assert.deepEqual(await credential(f),{refreshToken:f.env.GOOGLE_REFRESH_TOKEN,revision:0});
+ }
+ // Re-check the same modern contract on refreshed tokens and again just
+ // before promotion. A correct exchange cannot hide a later identity change.
+ for(const stage of ['refreshed_identity','completion_identity']){
+  for(const [invalid,reason] of [
+   [{sub:undefined},'subject_missing'],
+   [{sub:42},'subject_invalid'],
+   [{aud:undefined},'audience_missing'],
+   [{aud:[]},'audience_invalid'],
+   [{aud:'unrelated-client'},'audience_mismatch'],
+   [{azp:'unrelated-client'},'authorized_party_mismatch'],
+   [{sub:'another-google-subject'},'account_mismatch'],
+  ]){
+   const f=await fixture(),flow=await begin(f);
+   if(stage==='refreshed_identity'){
+    f.refreshedIdentity=invalid;
+    assert.notEqual(redirectResult(await callback(f,flow)),'pending');
+   }else{
+    assert.equal(redirectResult(await callback(f,flow)),'pending');
+    f.refreshedIdentity=invalid;
+    assert.ok((await api(f,'google-complete',{method:'POST'})).status>=400);
+   }
+   const log=storedDiagnostics(f)[0];
+   assert.equal(log.stage,stage==='refreshed_identity'&&reason==='account_mismatch'?'identity_match':stage);
+   assert.equal(log.reason,reason);
+   assert.deepEqual(await credential(f),{refreshToken:f.env.GOOGLE_REFRESH_TOKEN,revision:0});
+   assert.equal(f.sql.prepare('SELECT count(*) n FROM recovery_google_credentials').get().n,0);
+  }
  }
  // Concurrent callbacks consume a state once; completed flow replay cannot
  // exchange again or advance the connection revision.
@@ -384,7 +458,7 @@ try{
  // record against all dummy credentials, browser cookies and account values.
  const allowedKeys=new Set(['event','stage','status','reason','kind','providerStatus','providerCode']);
  const allowedStages=new Set(['request_validation','state_lookup','state_claim','code_validation','state_decrypt','baseline_check','token_exchange','candidate_tokens','candidate_identity','candidate_refresh','refreshed_identity','identity_match','calendar_probe','baseline_recheck','candidate_encrypt','candidate_stage','completion_validation','completion_refresh','completion_identity','completion_promotion']);
- const allowedReasons=new Set(['scope_set_mismatch','user_id_missing','user_id_invalid','audience_missing','audience_mismatch','issued_to_mismatch','refresh_token_missing','access_token_missing','account_mismatch','provider_request_failed','validation_failed','unexpected_failure']);
+ const allowedReasons=new Set(['scope_set_mismatch','subject_missing','subject_invalid','audience_missing','audience_invalid','audience_mismatch','authorized_party_mismatch','refresh_token_missing','access_token_missing','account_mismatch','provider_request_failed','validation_failed','unexpected_failure']);
  const allowedKinds=new Set(['token_exchange','token_refresh','tokeninfo','freebusy','events_list']);
  const allowedCodes=new Set(['invalid_grant','invalid_client','invalid_request','redirect_uri_mismatch','access_denied','unsupported_grant_type','unauthorized_client','invalid_scope','invalid_token','rate_limit_exceeded','PERMISSION_DENIED','UNAUTHENTICATED','RESOURCE_EXHAUSTED','INVALID_ARGUMENT','NOT_FOUND','INTERNAL','UNAVAILABLE','forbidden','insufficientPermissions','rateLimitExceeded','userRateLimitExceeded','authError','backendError','invalid','notFound','network_error','malformed_response','unrecognized']);
  for(const args of diagnostics){
@@ -403,6 +477,10 @@ try{
  for(const f of fixtures){
   assertPrivate([diagnostics,allStoredDiagnostics],f);
   for(const value of [f.ownerId,f.otherId,f.privateKey,f.env.RECOVERY_CAPABILITY_SECRET,f.env.GOOGLE_CLIENT_ID,...f.cookies.values()])assert.ok(!allDiagnostics.includes(value),'No private identifier or browser binding may be logged');
+  for(const call of f.calls){
+   assert.ok(!call.url.includes('/oauth2/v2/tokeninfo'),'Never fall back to legacy token introspection');
+   for(const accessToken of f.accessRefresh.keys())assert.ok(!call.url.includes(accessToken),'Access tokens must not enter any provider request URL');
+  }
  }
  console.log('PASS current-owner Google OAuth binding, PKCE, scope/identity validation, encrypted staging, replay protection, D1 grant continuity and bounded durable sanitized failure diagnostics');
 }finally{

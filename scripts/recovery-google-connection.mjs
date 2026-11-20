@@ -13,7 +13,7 @@ const fail=(status,message,reason)=>{const error=new GoogleConnectionError(statu
 const DIAGNOSTIC_PHASES=new Set(['request_validation','state_lookup','state_claim','code_validation','state_decrypt','baseline_check','token_exchange','candidate_tokens','candidate_identity','candidate_refresh','refreshed_identity','identity_match','calendar_probe','baseline_recheck','candidate_encrypt','candidate_stage','completion_validation','completion_refresh','completion_identity','completion_promotion']);
 const DIAGNOSTIC_PROVIDERS=new Set(['token_exchange','token_refresh','tokeninfo','freebusy','events_list']);
 const DIAGNOSTIC_CODES=new Set(['invalid_grant','invalid_client','invalid_request','redirect_uri_mismatch','access_denied','unsupported_grant_type','unauthorized_client','invalid_scope','invalid_token','rate_limit_exceeded','PERMISSION_DENIED','UNAUTHENTICATED','RESOURCE_EXHAUSTED','INVALID_ARGUMENT','NOT_FOUND','INTERNAL','UNAVAILABLE','forbidden','insufficientPermissions','rateLimitExceeded','userRateLimitExceeded','authError','backendError','invalid','notFound','network_error','malformed_response','unrecognized']);
-const DIAGNOSTIC_REASONS=new Set(['scope_set_mismatch','user_id_missing','user_id_invalid','audience_missing','audience_mismatch','issued_to_mismatch','refresh_token_missing','access_token_missing','account_mismatch','provider_request_failed','validation_failed','unexpected_failure']);
+const DIAGNOSTIC_REASONS=new Set(['scope_set_mismatch','subject_missing','subject_invalid','audience_missing','audience_invalid','audience_mismatch','authorized_party_mismatch','refresh_token_missing','access_token_missing','account_mismatch','provider_request_failed','validation_failed','unexpected_failure']);
 function providerError(operation,status,code){const error=new GoogleConnectionError(503,'Google could not verify the connection. Please try again.');error.diagnostic={provider:operation,provider_status:status,provider_code:DIAGNOSTIC_CODES.has(code)?code:'unrecognized'};return error;}
 function failureRecord(phase,error){
  // Only fixed enums and HTTP numbers enter logs or durable diagnostics. Never
@@ -60,18 +60,21 @@ function redirect(result,value){return new Response(null,{status:303,headers:{Lo
 async function provider(url,options={},operation){let response;try{response=await fetch(url,{...options,redirect:'manual',signal:AbortSignal.timeout(10000)});}catch{throw providerError(operation,null,'network_error');}if(!response.ok){let body;try{body=await response.json();}catch{}const code=typeof body?.error==='string'?body.error:body?.error?.status||body?.error?.errors?.[0]?.reason;throw providerError(operation,response.status,code);}let data;try{data=await response.json();}catch{throw providerError(operation,response.status,'malformed_response');}if(!data||typeof data!=='object'||Array.isArray(data))throw providerError(operation,response.status,'malformed_response');return data;}
 async function refresh(env,refreshToken){const data=await provider('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,refresh_token:refreshToken,grant_type:'refresh_token'})},'token_refresh');if(!secret(data.access_token))fail(503,'Google did not return a usable connection.');return data;}
 async function tokenIdentity(env,token,requiredScopeValidation=true){
- // Google's OAuth2 v2 discovery document defines POST and access_token in the
- // query, with user_id/audience independent of optional email/profile scopes.
- const url=new URL('https://www.googleapis.com/oauth2/v2/tokeninfo');url.searchParams.set('access_token',token);
- const info=await provider(url.href,{method:'POST'},'tokeninfo');
+ // Use Google's current user-access-token introspection contract (sub/aud/azp),
+ // not the legacy profile-dependent user_id field. Match the official auth
+ // library's POST/Bearer transport so access tokens never enter request URLs.
+ // https://docs.cloud.google.com/docs/authentication/token-types#user-access-tokens
+ const info=await provider('https://oauth2.googleapis.com/tokeninfo',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8',Authorization:'Bearer '+token}},'tokeninfo');
  const scopes=new Set(typeof info.scope==='string'?info.scope.split(/\s+/).filter(Boolean):[]);
  if(requiredScopeValidation&&(scopes.size!==SCOPES.length||!SCOPES.every(s=>scopes.has(s))))fail(400,'Allow only both requested Calendar permissions to connect Google.','scope_set_mismatch');
- if(info.user_id===undefined||info.user_id===null||info.user_id==='')fail(400,'Google could not verify the existing business account.','user_id_missing');
- if(typeof info.user_id!=='string'||info.user_id.length>256)fail(400,'Google could not verify the existing business account.','user_id_invalid');
- if(info.audience===undefined||info.audience===null||info.audience==='')fail(400,'Google could not verify the existing business account.','audience_missing');
- if(info.audience!==env.GOOGLE_CLIENT_ID)fail(400,'Google could not verify the existing business account.','audience_mismatch');
- if(info.issued_to!==undefined&&info.issued_to!==env.GOOGLE_CLIENT_ID)fail(400,'Google could not verify the existing business account.','issued_to_mismatch');
- return {userId:info.user_id,audience:info.audience};
+ if(info.sub===undefined||info.sub===null||info.sub==='')fail(400,'Google could not verify the existing business account.','subject_missing');
+ if(typeof info.sub!=='string'||info.sub.length>256||/\s|[\u0000-\u001f\u007f]/.test(info.sub))fail(400,'Google could not verify the existing business account.','subject_invalid');
+ if(info.aud===undefined||info.aud===null||info.aud==='')fail(400,'Google could not verify the existing business account.','audience_missing');
+ if(typeof info.aud!=='string')fail(400,'Google could not verify the existing business account.','audience_invalid');
+ if(info.aud!==env.GOOGLE_CLIENT_ID)fail(400,'Google could not verify the existing business account.','audience_mismatch');
+ if(info.azp!==undefined&&info.azp!==env.GOOGLE_CLIENT_ID)fail(400,'Google could not verify the existing business account.','authorized_party_mismatch');
+ // Keep the existing encrypted storage shape; userId now comes from sub.
+ return {userId:info.sub,audience:info.aud};
 }
 async function verifyCalendar(token){const headers={Authorization:'Bearer '+token,'Content-Type':'application/json'};const now=new Date(),end=new Date(now.getTime()+60000);const free=await provider('https://www.googleapis.com/calendar/v3/freeBusy',{method:'POST',headers,body:JSON.stringify({timeMin:now.toISOString(),timeMax:end.toISOString(),items:[{id:'primary'}]})},'freebusy');const calendar=free.calendars?.primary;if(!calendar||calendar.errors?.length||!Array.isArray(calendar.busy))fail(503,'Google Calendar availability could not be verified.');
  const url=new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events');url.searchParams.set('maxResults','1');url.searchParams.set('fields','kind');const events=await provider(url.href,{headers},'events_list');if(events.kind!=='calendar#events')fail(503,'Google Calendar event access could not be verified.');

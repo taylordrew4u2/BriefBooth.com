@@ -29,6 +29,28 @@ for (const path of ['/book/4u-digital', '/book/4u-digital/']) assert.equal(usesR
 for (const path of ['/book/zoom-review-consultant/', '/book/demo/', '/book/4u-digital-other/', '/book/4u-digital/manage']) assert.equal(usesRecoveryBooking(path, true), false);
 assert.equal(usesRecoveryBooking('/book/4u-digital/', false), false);
 
+// A valid staged callback can return after the owner's app session expires.
+// Sign-in, including email/OAuth confirmation, must return to completion rather
+// than strand the grant at the default workspace. Only a fixed view marker is
+// retained; the server still requires its browser cookie and verified owner.
+for (const search of ['?google=pending', '?connect=google&google=pending', '?google=pending&next=https://attacker.example&code=private-code&token=private-token&state=private-state']) {
+  const signIn = accountSignInPath(search);
+  assert.equal(signIn, '/account/sign-in/?connect=google&google=pending');
+  const callback = accountCallbackPath(new URL(signIn, 'https://briefbooth.com').search);
+  assert.equal(callback, '/account/?connect=google&google=pending');
+  const destination = accountDestination('consultant', false, new URL(callback, 'https://briefbooth.com').search, true);
+  assert.equal(destination, '/studio/?workspace=consultant&connect=google&google=pending');
+  assert.equal(needsAccountAccess(new URL(callback, 'https://briefbooth.com').search), true);
+  for (const value of [signIn, callback, destination]) assert.doesNotMatch(value, /attacker|private-|token|state|code=/);
+  assert.equal(accountDestination('client', false, search, true), '/client/?workspace=account');
+  assert.equal(accountDestination('consultant', true, search, true), '/client/?workspace=account');
+}
+for (const search of ['?google=connected', '?google=failed', '?google=https://attacker.example', '?google=pending&connect=https://attacker.example']) {
+  assert.equal(accountSignInPath(search), '/account/sign-in/');
+  assert.equal(accountCallbackPath(search), '/account/');
+}
+assert.equal(accountSignInPath('?connect=zoom&google=pending'), '/account/sign-in/?connect=zoom', 'A Google marker cannot change an explicit Zoom intent');
+
 // Execute the actual post-auth handler, including failure and client-intent paths.
 const file = 'components/account-access.tsx';
 const source = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -51,14 +73,20 @@ function findAuthCallbacks(node) {
   ts.forEachChild(node,findAuthCallbacks);
 }
 findAuthCallbacks(source);assert.equal(callbackExpressions.length,2);
-for(const search of ['?connect=google','?connect=zoom','?connect=google&next=https://attacker.example','?connect=https://attacker.example&returnTo=//attacker.example','']) {
-  const intent=new URLSearchParams(search).get('connect');
-  const expected=['google','zoom'].includes(intent)?`?connect=${intent}`:'';
+for(const [search,expected] of [
+  ['?connect=google','?connect=google'],
+  ['?connect=zoom','?connect=zoom'],
+  ['?connect=google&next=https://attacker.example','?connect=google'],
+  ['?google=pending','?connect=google&google=pending'],
+  ['?connect=google&google=pending&code=private-code&next=//attacker.example','?connect=google&google=pending'],
+  ['?connect=https://attacker.example&returnTo=//attacker.example',''],
+  ['',''],
+]) {
   for(const expression of callbackExpressions) {
     const destination=vm.runInNewContext(expression,{accountCallbackPath,location:{origin:'https://briefbooth.com',search}});
     assert.equal(destination,`https://briefbooth.com/account/${expected}`);
     assert.equal(new URL(destination).origin,'https://briefbooth.com');
-    assert.equal(accountDestination('consultant',false,new URL(destination).search,true),`/studio/?workspace=consultant${expected?'&connect='+intent:''}`);
+    assert.equal(accountDestination('consultant',false,new URL(destination).search,true),`/studio/?workspace=consultant${expected?'&'+expected.slice(1):''}`);
   }
 }
 const js = ts.transpileModule(`const routeAccount = ${routeCallback.getText(source)};`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;

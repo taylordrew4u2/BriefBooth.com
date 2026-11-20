@@ -3,20 +3,30 @@ export const recoveryOwnerId = "adc53778-f007-4c58-bd47-ba7a675abb29";
 export const clientWorkspacePath = "/client/?workspace=account";
 
 function connection(search: string) {
-  const value = new URLSearchParams(search).get("connect");
-  return value === "google" || value === "zoom" ? value : null;
+  const params = new URLSearchParams(search);
+  const value = params.get("connect");
+  if (value === "google" || value === "zoom") return value;
+  // A staged Google grant still needs a verified owner session. Keep its
+  // completion intent through sign-in; the URL itself never grants access.
+  return !params.has("connect") && params.get("google") === "pending" ? "google" : null;
+}
+function connectionQuery(search: string) {
+  const intent = connection(search);
+  if (!intent) return "";
+  const pending = intent === "google" && new URLSearchParams(search).get("google") === "pending";
+  return "connect=" + intent + (pending ? "&google=pending" : "");
 }
 export function accountSignInPath(search = "") {
-  const intent = connection(search);
-  return "/account/sign-in/" + (intent ? "?connect=" + intent : "");
+  const query = connectionQuery(search);
+  return "/account/sign-in/" + (query ? "?" + query : "");
 }
 export function accountCallbackPath(search = "") {
-  const intent = connection(search);
-  return "/account/" + (intent ? "?connect=" + intent : "");
+  const query = connectionQuery(search);
+  return "/account/" + (query ? "?" + query : "");
 }
 export function consultantWorkspacePath(search = "") {
-  const intent = connection(search);
-  return "/studio/?workspace=consultant" + (intent ? "&connect=" + intent : "");
+  const query = connectionQuery(search);
+  return "/studio/?workspace=consultant" + (query ? "&" + query : "");
 }
 export function needsConsultantWorkspace(search: string) {
   const params = new URLSearchParams(search);
