@@ -4,6 +4,7 @@ const ORIGIN='https://briefbooth.com';
 const CALLBACK=ORIGIN+'/api/google/callback';
 const COOKIE='__Secure-briefbooth-google';
 const TTL=10*60*1000;
+const CALENDAR_BINDING_PAGES=5,CALENDAR_BINDING_PAGE_SIZE=100;
 const SCOPES=['https://www.googleapis.com/auth/calendar.events.owned','https://www.googleapis.com/auth/calendar.freebusy'];
 const encoder=new TextEncoder(),decoder=new TextDecoder();
 export class GoogleConnectionError extends Error {
@@ -13,7 +14,7 @@ const fail=(status,message,reason)=>{const error=new GoogleConnectionError(statu
 const DIAGNOSTIC_PHASES=new Set(['request_validation','state_lookup','state_claim','code_validation','state_decrypt','baseline_check','token_exchange','candidate_tokens','candidate_identity','candidate_refresh','refreshed_identity','identity_match','calendar_probe','baseline_recheck','candidate_encrypt','candidate_stage','completion_validation','completion_refresh','completion_identity','completion_promotion']);
 const DIAGNOSTIC_PROVIDERS=new Set(['token_exchange','token_refresh','tokeninfo','freebusy','events_list']);
 const DIAGNOSTIC_CODES=new Set(['invalid_grant','invalid_client','invalid_request','redirect_uri_mismatch','access_denied','unsupported_grant_type','unauthorized_client','invalid_scope','invalid_token','rate_limit_exceeded','PERMISSION_DENIED','UNAUTHENTICATED','RESOURCE_EXHAUSTED','INVALID_ARGUMENT','NOT_FOUND','INTERNAL','UNAVAILABLE','forbidden','insufficientPermissions','rateLimitExceeded','userRateLimitExceeded','authError','backendError','invalid','notFound','network_error','malformed_response','unrecognized']);
-const DIAGNOSTIC_REASONS=new Set(['scope_set_mismatch','subject_missing','subject_invalid','audience_missing','audience_invalid','audience_mismatch','authorized_party_mismatch','refresh_token_missing','access_token_missing','account_mismatch','provider_request_failed','validation_failed','unexpected_failure']);
+const DIAGNOSTIC_REASONS=new Set(['scope_set_mismatch','calendar_binding_missing','calendar_binding_invalid','calendar_binding_conflict','calendar_binding_pagination','audience_missing','audience_invalid','audience_mismatch','authorized_party_mismatch','refresh_token_missing','access_token_missing','account_mismatch','provider_request_failed','validation_failed','unexpected_failure']);
 function providerError(operation,status,code){const error=new GoogleConnectionError(503,'Google could not verify the connection. Please try again.');error.diagnostic={provider:operation,provider_status:status,provider_code:DIAGNOSTIC_CODES.has(code)?code:'unrecognized'};return error;}
 function failureRecord(phase,error){
  // Only fixed enums and HTTP numbers enter logs or durable diagnostics. Never
@@ -60,21 +61,55 @@ function redirect(result,value){return new Response(null,{status:303,headers:{Lo
 async function provider(url,options={},operation){let response;try{response=await fetch(url,{...options,redirect:'manual',signal:AbortSignal.timeout(10000)});}catch{throw providerError(operation,null,'network_error');}if(!response.ok){let body;try{body=await response.json();}catch{}const code=typeof body?.error==='string'?body.error:body?.error?.status||body?.error?.errors?.[0]?.reason;throw providerError(operation,response.status,code);}let data;try{data=await response.json();}catch{throw providerError(operation,response.status,'malformed_response');}if(!data||typeof data!=='object'||Array.isArray(data))throw providerError(operation,response.status,'malformed_response');return data;}
 async function refresh(env,refreshToken){const data=await provider('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,refresh_token:refreshToken,grant_type:'refresh_token'})},'token_refresh');if(!secret(data.access_token))fail(503,'Google did not return a usable connection.');return data;}
 async function tokenIdentity(env,token,requiredScopeValidation=true){
- // Use Google's current user-access-token introspection contract (sub/aud/azp),
- // not the legacy profile-dependent user_id field. Match the official auth
- // library's POST/Bearer transport so access tokens never enter request URLs.
- // https://docs.cloud.google.com/docs/authentication/token-types#user-access-tokens
+ // Calendar-only grants do not reliably include a subject. Token introspection
+ // verifies the OAuth client and scopes; the primary Calendar resource below
+ // establishes which existing business Calendar the grant can control.
+ // POST/Bearer keeps access tokens out of provider request URLs.
  const info=await provider('https://oauth2.googleapis.com/tokeninfo',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8',Authorization:'Bearer '+token}},'tokeninfo');
  const scopes=new Set(typeof info.scope==='string'?info.scope.split(/\s+/).filter(Boolean):[]);
  if(requiredScopeValidation&&(scopes.size!==SCOPES.length||!SCOPES.every(s=>scopes.has(s))))fail(400,'Allow only both requested Calendar permissions to connect Google.','scope_set_mismatch');
- if(info.sub===undefined||info.sub===null||info.sub==='')fail(400,'Google could not verify the existing business account.','subject_missing');
- if(typeof info.sub!=='string'||info.sub.length>256||/\s|[\u0000-\u001f\u007f]/.test(info.sub))fail(400,'Google could not verify the existing business account.','subject_invalid');
  if(info.aud===undefined||info.aud===null||info.aud==='')fail(400,'Google could not verify the existing business account.','audience_missing');
  if(typeof info.aud!=='string')fail(400,'Google could not verify the existing business account.','audience_invalid');
  if(info.aud!==env.GOOGLE_CLIENT_ID)fail(400,'Google could not verify the existing business account.','audience_mismatch');
  if(info.azp!==undefined&&info.azp!==env.GOOGLE_CLIENT_ID)fail(400,'Google could not verify the existing business account.','authorized_party_mismatch');
- // Keep the existing encrypted storage shape; userId now comes from sub.
- return {userId:info.sub,audience:info.aud};
+ return primaryCalendarBinding(token);
+}
+function calendarIdentifier(value){return typeof value==='string'&&value.length<=320&&/^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$/.test(value);}
+function validBinding(value){return value?.bindingType==='primary_calendar'&&calendarIdentifier(value.primaryCalendarId);}
+function sameBinding(left,right){return validBinding(left)&&validBinding(right)&&left.primaryCalendarId===right.primaryCalendarId;}
+async function primaryCalendarBinding(token){
+ // `primary` is the token user's primary Calendar. Google's read-only
+ // organizer.self marks the calendar containing this copy; an imported or
+ // invited event's external organizer email alone proves nothing. Read only
+ // these metadata fields, never event titles, descriptions, dates or attendees.
+ // https://developers.google.com/workspace/calendar/api/v3/reference/events
+ const url=new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events');
+ url.searchParams.set('fields','kind,nextPageToken,items(organizer(self,email))');
+ url.searchParams.set('maxResults',String(CALENDAR_BINDING_PAGE_SIZE));
+ url.searchParams.set('showDeleted','true');
+ const seen=new Set();
+ for(let page=0;page<CALENDAR_BINDING_PAGES;page++){
+  const data=await provider(url.href,{headers:{Authorization:'Bearer '+token}},'events_list');
+  if(data.kind!=='calendar#events'||(data.items!==undefined&&!Array.isArray(data.items)))fail(503,'Google could not verify the business Calendar.','calendar_binding_invalid');
+  let primaryCalendarId=null;
+  for(const item of data.items||[]){
+   if(!item||typeof item!=='object'||Array.isArray(item))fail(503,'Google could not verify the business Calendar.','calendar_binding_invalid');
+   const organizer=item.organizer;
+   if(organizer===undefined)continue; // Deleted events may retain only their ID.
+   if(!organizer||typeof organizer!=='object'||Array.isArray(organizer)||(organizer.self!==undefined&&typeof organizer.self!=='boolean'))fail(503,'Google could not verify the business Calendar.','calendar_binding_invalid');
+   if(organizer.self!==true)continue;
+   if(!calendarIdentifier(organizer.email))fail(503,'Google could not verify the business Calendar.','calendar_binding_invalid');
+   if(primaryCalendarId!==null&&primaryCalendarId!==organizer.email)fail(503,'Google returned conflicting Calendar information.','calendar_binding_conflict');
+   primaryCalendarId=organizer.email;
+  }
+  // One unambiguous provider-authenticated self proof identifies the resource;
+  // inspect the whole returned page for conflicting proofs before accepting it.
+  if(primaryCalendarId!==null)return {bindingType:'primary_calendar',primaryCalendarId};
+  if(data.nextPageToken===undefined||data.nextPageToken==='')fail(400,'Google could not verify the existing business Calendar.','calendar_binding_missing');
+  if(!secret(data.nextPageToken)||seen.has(data.nextPageToken))fail(503,'Google could not verify the business Calendar.','calendar_binding_pagination');
+  seen.add(data.nextPageToken);url.searchParams.set('pageToken',data.nextPageToken);
+ }
+ fail(400,'Google could not verify the existing business Calendar.','calendar_binding_pagination');
 }
 async function verifyCalendar(token){const headers={Authorization:'Bearer '+token,'Content-Type':'application/json'};const now=new Date(),end=new Date(now.getTime()+60000);const free=await provider('https://www.googleapis.com/calendar/v3/freeBusy',{method:'POST',headers,body:JSON.stringify({timeMin:now.toISOString(),timeMax:end.toISOString(),items:[{id:'primary'}]})},'freebusy');const calendar=free.calendars?.primary;if(!calendar||calendar.errors?.length||!Array.isArray(calendar.busy))fail(503,'Google Calendar availability could not be verified.');
  const url=new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events');url.searchParams.set('maxResults','1');url.searchParams.set('fields','kind');const events=await provider(url.href,{headers},'events_list');if(events.kind!=='calendar#events')fail(503,'Google Calendar event access could not be verified.');
@@ -84,7 +119,7 @@ export async function readGoogleCredential(env){
  // never switch live bookings back to a superseded environment credential.
  const id=configured(env);const row=await env.RECOVERY_DB.prepare('SELECT revision,token_ciphertext FROM recovery_google_credentials WHERE owner_id=?').bind(id).first();
  if(!row){if(!secret(env.GOOGLE_REFRESH_TOKEN))fail(503,'Google Calendar needs attention.');return {refreshToken:env.GOOGLE_REFRESH_TOKEN,revision:0};}
- if(!Number.isSafeInteger(row.revision)||row.revision<1)fail(503,'The saved Google connection could not be read.');const token=await open(env,id,'recovery_google_credentials',row.token_ciphertext);if(!secret(token.refreshToken)||token.revision!==row.revision||typeof token.userId!=='string'||!token.userId||token.clientId!==env.GOOGLE_CLIENT_ID)fail(503,'The saved Google connection could not be read.');return {refreshToken:token.refreshToken,revision:row.revision};
+ if(!Number.isSafeInteger(row.revision)||row.revision<1)fail(503,'The saved Google connection could not be read.');const token=await open(env,id,'recovery_google_credentials',row.token_ciphertext);if(!secret(token.refreshToken)||token.revision!==row.revision||!validBinding(token)||token.clientId!==env.GOOGLE_CLIENT_ID)fail(503,'The saved Google connection could not be read.');return {refreshToken:token.refreshToken,revision:row.revision};
 }
 export async function googleConnectionStatus(env){
  const id=configured(env),credential=await readGoogleCredential(env);const row=await env.RECOVERY_DB.prepare('SELECT updated_ms FROM recovery_google_credentials WHERE owner_id=?').bind(id).first();return {enabled:googleConnectionEnabled(env),connected:Boolean(credential.refreshToken),revision:credential.revision,updated_ms:row?.updated_ms??null};
@@ -102,8 +137,8 @@ export async function beginGoogleConnection(request,env,authenticatedOwnerId){
   const stored=await env.RECOVERY_DB.prepare('SELECT revision,token_ciphertext FROM recovery_google_credentials WHERE owner_id=?').bind(id).first();
   if(!stored||stored.revision!==credential.revision)fail(409,'Your Google connection changed. Start reconnection again.');
   const pinned=await open(env,id,'recovery_google_credentials',stored.token_ciphertext);
-  if(pinned.revision!==credential.revision||pinned.refreshToken!==credential.refreshToken||pinned.clientId!==env.GOOGLE_CLIENT_ID||typeof pinned.userId!=='string'||!pinned.userId)fail(503,'The saved Google identity could not be verified.');
-  identity={userId:pinned.userId,audience:pinned.clientId};
+  if(pinned.revision!==credential.revision||pinned.refreshToken!==credential.refreshToken||pinned.clientId!==env.GOOGLE_CLIENT_ID||!validBinding(pinned))fail(503,'The saved Google identity could not be verified.');
+  identity={bindingType:pinned.bindingType,primaryCalendarId:pinned.primaryCalendarId};
  }
  const state='r1_'+random(),browser=random(),verifier=random(),stateHash=await hash(state),now=Date.now();
  const envelope=await seal(env,id,'recovery_google_handshakes',{verifier,...identity,clientId:env.GOOGLE_CLIENT_ID,baselineFingerprint:await hash(credential.refreshToken)});
@@ -112,7 +147,7 @@ export async function beginGoogleConnection(request,env,authenticatedOwnerId){
  return json({url:url.href},{'Set-Cookie':cookie(state+'.'+browser)});
 }
 async function handshake(request,env,state){const browser=cookieValue(request);if(!browser||browser.state!==state)return null;const stateHash=await hash(state),row=await env.RECOVERY_DB.prepare('SELECT * FROM recovery_google_handshakes WHERE state_hash=?').bind(stateHash).first();if(!row||row.owner_id!==ownerId(env)||row.browser_hash!==await hash(browser.browser)||row.expires_ms<=Date.now())return null;return {row,stateHash,browser};}
-async function unchanged(env,row,envelope){const current=await readGoogleCredential(env);if(current.revision!==row.baseline_revision||envelope.clientId!==env.GOOGLE_CLIENT_ID||await hash(current.refreshToken)!==envelope.baselineFingerprint)fail(409,'Your Google connection changed. Start reconnection again.');}
+async function unchanged(env,row,envelope){if(!validBinding(envelope))fail(409,'This Google connection attempt is no longer compatible. Start reconnection again.','calendar_binding_invalid');const current=await readGoogleCredential(env);if(current.revision!==row.baseline_revision||envelope.clientId!==env.GOOGLE_CLIENT_ID||await hash(current.refreshToken)!==envelope.baselineFingerprint)fail(409,'Your Google connection changed. Start reconnection again.');}
 async function finish(request,env,trace){
  requestAt(request,'GET','/api/google/callback');ready(env);const url=new URL(request.url),state=url.searchParams.get('state')||'';
  trace.phase='state_lookup';
@@ -128,9 +163,9 @@ async function finish(request,env,trace){
   if(!secret(exchanged.access_token))fail(400,'Google did not grant offline Calendar access.','access_token_missing');
   trace.phase='candidate_identity';const identity=await tokenIdentity(env,exchanged.access_token);trace.phase='candidate_refresh';const refreshed=await refresh(env,exchanged.refresh_token);trace.phase='refreshed_identity';const refreshedIdentity=await tokenIdentity(env,refreshed.access_token);
   trace.phase='identity_match';
-  if(identity.userId!==envelope.userId||refreshedIdentity.userId!==envelope.userId)fail(403,'Choose the existing 4u Digital Google account.','account_mismatch');
+  if(!sameBinding(identity,envelope)||!sameBinding(refreshedIdentity,envelope))fail(403,'Choose the existing 4u Digital Google account.','account_mismatch');
   trace.phase='calendar_probe';await verifyCalendar(refreshed.access_token);trace.phase='baseline_recheck';await unchanged(env,row,envelope);
-  trace.phase='candidate_encrypt';const candidate=await seal(env,row.owner_id,'recovery_google_candidate',{refreshToken:exchanged.refresh_token,userId:identity.userId,clientId:env.GOOGLE_CLIENT_ID});
+  trace.phase='candidate_encrypt';const candidate=await seal(env,row.owner_id,'recovery_google_candidate',{refreshToken:exchanged.refresh_token,...identity,clientId:env.GOOGLE_CLIENT_ID});
   trace.phase='candidate_stage';
   const staged=await env.RECOVERY_DB.prepare("UPDATE recovery_google_handshakes SET phase='ready',candidate_ciphertext=?,expires_ms=? WHERE state_hash=? AND phase='processing' AND expires_ms>?").bind(candidate,Date.now()+TTL,stateHash,Date.now()).run();if(staged.meta?.changes!==1)return redirect('expired');
   return redirect('pending',browser.value);
@@ -149,10 +184,10 @@ export async function completeGoogleConnection(request,env,authenticatedOwnerId)
  const {row,stateHash}=flow;if(row.phase==='completed'){await clearFailure(env,stateHash);return json({connected:true,revision:row.completed_revision},{'Set-Cookie':cookie(browser.value)});}if(row.phase!=='ready'||!row.candidate_ciphertext)fail(409,'Finish Google authorization before completing the connection.');
  let phase='completion_validation';
  try{
- const envelope=await open(env,id,'recovery_google_handshakes',row.verifier_ciphertext);await unchanged(env,row,envelope);const candidate=await open(env,id,'recovery_google_candidate',row.candidate_ciphertext);if(!secret(candidate.refreshToken)||candidate.clientId!==env.GOOGLE_CLIENT_ID||candidate.userId!==envelope.userId)fail(503,'The pending Google connection could not be verified.');
- phase='completion_refresh';const refreshed=await refresh(env,candidate.refreshToken);phase='completion_identity';const identity=await tokenIdentity(env,refreshed.access_token);if(identity.userId!==envelope.userId)fail(403,'Choose the existing 4u Digital Google account.','account_mismatch');
+ const envelope=await open(env,id,'recovery_google_handshakes',row.verifier_ciphertext);await unchanged(env,row,envelope);const candidate=await open(env,id,'recovery_google_candidate',row.candidate_ciphertext);if(!secret(candidate.refreshToken)||candidate.clientId!==env.GOOGLE_CLIENT_ID||!sameBinding(candidate,envelope))fail(503,'The pending Google connection could not be verified.');
+ phase='completion_refresh';const refreshed=await refresh(env,candidate.refreshToken);phase='completion_identity';const identity=await tokenIdentity(env,refreshed.access_token);if(!sameBinding(identity,envelope))fail(403,'Choose the existing 4u Digital Google account.','account_mismatch');
  phase='completion_promotion';
- const revision=row.baseline_revision+1,now=Date.now(),ciphertext=await seal(env,id,'recovery_google_credentials',{refreshToken:candidate.refreshToken,revision,userId:identity.userId,clientId:env.GOOGLE_CLIENT_ID});
+ const revision=row.baseline_revision+1,now=Date.now(),ciphertext=await seal(env,id,'recovery_google_credentials',{refreshToken:candidate.refreshToken,revision,...identity,clientId:env.GOOGLE_CLIENT_ID});
  const valid="EXISTS(SELECT 1 FROM recovery_google_handshakes WHERE state_hash=? AND owner_id=? AND phase='ready' AND expires_ms>?)";
  const promotion=row.baseline_revision===0
   ?env.RECOVERY_DB.prepare(`INSERT INTO recovery_google_credentials(owner_id,revision,token_ciphertext,updated_ms,operation_hash) SELECT ?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM recovery_google_credentials WHERE owner_id=?) AND ${valid}`).bind(id,revision,ciphertext,now,stateHash,id,stateHash,id,now)

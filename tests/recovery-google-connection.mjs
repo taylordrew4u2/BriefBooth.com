@@ -65,7 +65,7 @@ globalThis.fetch=async(input,options={})=>{
   if(candidate&&f.mode==='identity-timeout')throw Error('Dummy identity timeout');
   if(candidate&&f.mode==='identity-error')return Response.json({error:'invalid_token'},{status:400});
   if(candidate&&f.mode==='malformed-identity')return Response.json(null);
-  return Response.json({sub:candidate&&f.mode==='wrong-account'?'wrong-google-subject':'business-google-subject',aud:candidate&&f.mode==='wrong-audience'?'another-client':f.env.GOOGLE_CLIENT_ID,azp:f.env.GOOGLE_CLIENT_ID,scope:(candidate&&f.mode==='missing-scope'?SCOPES.slice(0,1):candidate&&f.mode==='extra-scope'?[...SCOPES,'https://www.googleapis.com/auth/userinfo.email']:SCOPES).join(' '),expires_in:3600,...(candidate?f.candidateIdentity||{}:f.baselineIdentity||{}),...(candidate&&token.startsWith('test-refreshed-access-')?f.refreshedIdentity||{}:{})});
+  return Response.json({aud:candidate&&f.mode==='wrong-audience'?'another-client':f.env.GOOGLE_CLIENT_ID,azp:f.env.GOOGLE_CLIENT_ID,scope:(candidate&&f.mode==='missing-scope'?SCOPES.slice(0,1):candidate&&f.mode==='extra-scope'?[...SCOPES,'https://www.googleapis.com/auth/userinfo.email']:SCOPES).join(' '),expires_in:3600,...(candidate?f.candidateIdentity||{}:f.baselineIdentity||{}),...(candidate&&token.startsWith('test-refreshed-access-')?f.refreshedIdentity||{}:{})});
  }
  if(url.origin==='https://www.googleapis.com'&&url.pathname==='/calendar/v3/freeBusy'){
   const refresh=f.accessRefresh.get(options.headers.Authorization?.slice(7));assert.ok(refresh);
@@ -73,8 +73,21 @@ globalThis.fetch=async(input,options={})=>{
   return Response.json({calendars:{primary:{busy:[]}}});
  }
  if(url.origin==='https://www.googleapis.com'&&url.pathname==='/calendar/v3/calendars/primary/events'){
-  assert.equal(options.method||'GET','GET');assert.equal(url.searchParams.get('fields'),'kind');assert.equal(url.searchParams.get('maxResults'),'1');
-  return Response.json({kind:f.mode==='event-access-error'?'not-a-calendar-list':'calendar#events'});
+  assert.equal(options.method||'GET','GET','Connection validation must not write Calendar events');
+  if(url.searchParams.get('fields')==='kind'){
+   assert.equal(url.searchParams.get('maxResults'),'1');
+   return Response.json({kind:f.mode==='event-access-error'?'not-a-calendar-list':'calendar#events'});
+  }
+  assert.equal(url.searchParams.get('fields'),'kind,nextPageToken,items(organizer(self,email))');
+  assert.equal(url.searchParams.get('maxResults'),'100');assert.equal(url.searchParams.get('showDeleted'),'true');
+  assert.ok([...url.searchParams.keys()].every(key=>['fields','maxResults','showDeleted','pageToken'].includes(key)),'Do not read unrelated Calendar content');
+  const token=options.headers.Authorization?.slice(7),refresh=f.accessRefresh.get(token),candidate=refresh!==f.env.GOOGLE_REFRESH_TOKEN;
+  assert.ok(refresh);
+  const pages=candidate&&(token.startsWith('test-refreshed-access-')&&f.refreshedCalendarPages||f.candidateCalendarPages)||(!candidate&&f.baselineCalendarPages);
+  const pageToken=url.searchParams.get('pageToken'),index=pageToken===null?0:Number(pageToken.replace('page-',''));
+  assert.ok(Number.isSafeInteger(index)&&index>=0&&index<5,'Pagination must stay bounded');
+  if(pages)return Response.json(pages[index]??{kind:'calendar#events',items:[]});
+  return Response.json({kind:f.mode==='event-access-error'?'not-a-calendar-list':'calendar#events',items:[{organizer:{self:true,email:candidate&&f.mode==='wrong-account'?'foreign-calendar@example.invalid':'business-calendar@example.invalid'}}]});
  }
  f.unexpected.push(url.href);throw Error('Unexpected external request');
 };
@@ -100,6 +113,16 @@ const redirectResult=response=>new URL(response.headers.get('location'),ORIGIN).
 async function credential(f){return readGoogleCredential(f.env);}
 function storedDiagnostics(f){return f.sql.prepare('SELECT diagnostic FROM recovery_google_failures ORDER BY failed_ms,operation_hash').all().map(row=>JSON.parse(row.diagnostic));}
 function assertPrivate(value,f){const text=JSON.stringify(value);for(const secret of [f.env.GOOGLE_REFRESH_TOKEN,f.env.GOOGLE_CLIENT_SECRET,...f.codeRefresh.values()])assert.ok(!text.includes(secret),'Credentials must not be disclosed');}
+const calendarPage=(items,nextPageToken)=>({kind:'calendar#events',items,...(nextPageToken===undefined?{}:{nextPageToken})});
+const selfCalendar=email=>({organizer:{self:true,email}});
+async function testEnvelope(f,purpose,value){
+ const encode=value=>new TextEncoder().encode(value);
+ const master=await crypto.subtle.importKey('raw',encode(f.env.RECOVERY_CAPABILITY_SECRET),'HKDF',false,['deriveKey']);
+ const key=await crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:encode('briefbooth-google-oauth-v1'),info:encode('encrypted-owner-google-credentials')},master,{name:'AES-GCM',length:256},false,['encrypt']);
+ const iv=crypto.getRandomValues(new Uint8Array(12));
+ const body=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:encode(purpose+':'+f.ownerId)},key,encode(JSON.stringify(value)));
+ return 'v1.'+Buffer.from(iv).toString('base64url')+'.'+Buffer.from(body).toString('base64url');
+}
 
 try{
  // Feature flag does not change existing booking credentials or create a grant.
@@ -121,9 +144,9 @@ try{
   assert.equal(f.exchangeCount,0);assert.equal(f.calls.filter(c=>c.url.includes('googleapis.com')).length,0);
   assert.ok([401,403].includes((await api(f,'google-status',{token:'header.other.signature'})).status));
  }
- // The normal provider fixture follows modern tokeninfo: sub/aud, optionally
- // azp, and no legacy user_id/audience or profile/email fields. No extra scope
- // or fallback endpoint is needed to validate and promote this grant.
+ // Calendar-only tokeninfo omits sub, user_id and email. Client/scope checks
+ // plus independent provider-derived primary Calendar binding still succeed
+ // without adding identity scopes or falling back to a login email.
  for(const withAuthorizedParty of [false,true]){
   const f=await fixture();
   if(!withAuthorizedParty){f.baselineIdentity={azp:undefined};f.candidateIdentity={azp:undefined};}
@@ -135,6 +158,8 @@ try{
   const infoCalls=f.calls.filter(c=>c.url==='https://oauth2.googleapis.com/tokeninfo');
   assert.equal(infoCalls.length,4,'Inspect baseline, exchanged, refreshed and completion tokens');
   assert.ok(infoCalls.every(c=>c.method==='POST'&&c.authorization.startsWith('Bearer ')));
+  const retained=JSON.stringify(f.sql.prepare('SELECT * FROM recovery_google_credentials').all());
+  assert.ok(!retained.includes('business-calendar@example.invalid'),'Primary Calendar binding stays encrypted');
  }
  // Historical permissions establish the previous account's identity, not
  // what the replacement is allowed to request. A legacy grant must remain
@@ -154,7 +179,7 @@ try{
   assert.equal((await credential(f)).revision,1);
  }
  // Relaxing historical scope checks cannot relax its trusted Google identity
- // binding. Reject mismatched clients and absent/invalid Google subject IDs.
+ // binding. Reject mismatched clients and absent/invalid audiences.
  for(const baselineIdentity of [
   {aud:'unrelated-oauth-client'},
   {aud:undefined},
@@ -164,14 +189,6 @@ try{
   {aud:[]},
   {azp:'unrelated-oauth-client'},
   {azp:null},
-  {sub:undefined},
-  {sub:null},
-  {sub:''},
-  {sub:' '},
-  {sub:'contains\ncontrol'},
-  {sub:'x'.repeat(257)},
-  {sub:42},
-  {sub:{}},
  ]){
   const f=await fixture();f.baselineIdentity={scope:'legacy-permission',...baselineIdentity};
   const denied=await api(f,'google-connect',{method:'POST'});assert.equal(denied.status,400);
@@ -275,14 +292,6 @@ try{
  // Diagnostics distinguish missing/malformed identity claims without emitting
  // the account identifier or attacker-controlled claim values.
  for(const [candidateIdentity,reason] of [
-  [{sub:undefined},'subject_missing'],
-  [{sub:null},'subject_missing'],
-  [{sub:''},'subject_missing'],
-  [{sub:42},'subject_invalid'],
-  [{sub:{}},'subject_invalid'],
-  [{sub:' '},'subject_invalid'],
-  [{sub:'contains\u0000control'},'subject_invalid'],
-  [{sub:'x'.repeat(257)},'subject_invalid'],
   [{aud:undefined},'audience_missing'],
   [{aud:null},'audience_missing'],
   [{aud:''},'audience_missing'],
@@ -299,26 +308,23 @@ try{
   assert.deepEqual(storedDiagnostics(f),[log]);
   assert.deepEqual(await credential(f),{refreshToken:f.env.GOOGLE_REFRESH_TOKEN,revision:0});
  }
- // Never fall back to legacy claims or an email when the modern subject or
- // audience is missing. Valid-looking legacy fields do not authorize a grant.
- for(const missing of ['sub','aud']){
+ // Neither legacy audience nor a claimed account/email may replace the
+ // OAuth audience or independent primary Calendar resource proof.
+ {
   const f=await fixture(),flow=await begin(f);
-  f.candidateIdentity={sub:'business-google-subject',aud:f.env.GOOGLE_CLIENT_ID,user_id:'business-google-subject',audience:f.env.GOOGLE_CLIENT_ID,issued_to:f.env.GOOGLE_CLIENT_ID,email:'admin@example.invalid',[missing]:undefined};
+  f.candidateIdentity={sub:'claimed-business-subject',user_id:'claimed-business-subject',audience:f.env.GOOGLE_CLIENT_ID,issued_to:f.env.GOOGLE_CLIENT_ID,email:'business-calendar@example.invalid',aud:undefined};
   assert.equal(redirectResult(await callback(f,flow)),'failed');
-  assert.equal(storedDiagnostics(f)[0].reason,missing==='sub'?'subject_missing':'audience_missing');
+  assert.equal(storedDiagnostics(f)[0].reason,'audience_missing');
   assert.deepEqual(await credential(f),{refreshToken:f.env.GOOGLE_REFRESH_TOKEN,revision:0});
  }
  // Re-check the same modern contract on refreshed tokens and again just
  // before promotion. A correct exchange cannot hide a later identity change.
  for(const stage of ['refreshed_identity','completion_identity']){
   for(const [invalid,reason] of [
-   [{sub:undefined},'subject_missing'],
-   [{sub:42},'subject_invalid'],
-   [{aud:undefined},'audience_missing'],
+     [{aud:undefined},'audience_missing'],
    [{aud:[]},'audience_invalid'],
    [{aud:'unrelated-client'},'audience_mismatch'],
    [{azp:'unrelated-client'},'authorized_party_mismatch'],
-   [{sub:'another-google-subject'},'account_mismatch'],
   ]){
    const f=await fixture(),flow=await begin(f);
    if(stage==='refreshed_identity'){
@@ -335,6 +341,93 @@ try{
    assert.deepEqual(await credential(f),{refreshToken:f.env.GOOGLE_REFRESH_TOKEN,revision:0});
    assert.equal(f.sql.prepare('SELECT count(*) n FROM recovery_google_credentials').get().n,0);
   }
+ }
+ // The Calendar proof is never an email assertion: an invited/imported event
+ // can name the business organizer but cannot supply Google's read-only self
+ // marker for a different primary calendar. Missing/ambiguous proof is fatal.
+ const rejectedCalendarPages=[
+  [[calendarPage([])],'calendar_binding_missing'],
+  [[calendarPage([{}])],'calendar_binding_missing'],
+  [[calendarPage([{organizer:{self:false,email:'business-calendar@example.invalid'}}])],'calendar_binding_missing'],
+  [[calendarPage([{organizer:{email:'business-calendar@example.invalid'}}])],'calendar_binding_missing'],
+  [[calendarPage([{organizer:{self:'true',email:'business-calendar@example.invalid'}}])],'calendar_binding_invalid'],
+  [[calendarPage([selfCalendar(LEAK)])],'calendar_binding_invalid'],
+  [[calendarPage([selfCalendar('business-calendar@example.invalid'),selfCalendar('foreign-calendar@example.invalid')])],'calendar_binding_conflict'],
+  [[{kind:'calendar#events',items:'malformed'}],'calendar_binding_invalid'],
+  [[{kind:'wrong',items:[selfCalendar('business-calendar@example.invalid')]}],'calendar_binding_invalid'],
+  [[calendarPage([],'page-1'),calendarPage([],'page-1')],'calendar_binding_pagination'],
+  [[calendarPage([],42)],'calendar_binding_pagination'],
+  [Array.from({length:5},(_,index)=>calendarPage([],'page-'+(index+1))),'calendar_binding_pagination'],
+ ];
+ for(const [pages,reason] of rejectedCalendarPages){
+  for(const where of ['baseline','candidate']){
+   const f=await fixture();
+   if(where==='baseline'){
+    f.baselineCalendarPages=pages;
+    assert.ok((await api(f,'google-connect',{method:'POST'})).status>=400);
+    assert.equal(f.exchangeCount,0);
+    assert.equal(f.sql.prepare('SELECT count(*) n FROM recovery_google_handshakes').get().n,0);
+   }else{
+    const flow=await begin(f);f.candidateCalendarPages=pages;
+    f.candidateIdentity={sub:'claimed-business-subject',user_id:'claimed-business-subject',email:'business-calendar@example.invalid'};
+    assert.equal(redirectResult(await callback(f,flow)),'failed');
+    assert.equal(storedDiagnostics(f)[0].stage,'candidate_identity');
+    assert.equal(storedDiagnostics(f)[0].reason,reason);
+   }
+   assert.deepEqual(await credential(f),{refreshToken:f.env.GOOGLE_REFRESH_TOKEN,revision:0});
+  }
+ }
+ // Paging may skip deleted/invited copies, but accepts only a consistent self
+ // proof from the authenticated primary resource and never writes an event.
+ {
+  const f=await fixture();
+  const pages=[calendarPage([{}, {organizer:{self:false,email:'external@example.invalid'}}],'page-1'),calendarPage([selfCalendar('business-calendar@example.invalid'),selfCalendar('business-calendar@example.invalid')])];
+  f.baselineCalendarPages=pages;f.candidateCalendarPages=pages;
+  const flow=await begin(f);assert.equal(redirectResult(await callback(f,flow)),'pending');
+  assert.equal((await api(f,'google-complete',{method:'POST'})).status,200);
+  const metadata=f.calls.filter(c=>c.url.includes('items%28organizer'));
+  assert.equal(metadata.length,8,'Two bounded pages for each of four binding checks');
+  assert.ok(metadata.every(c=>c.method==='GET'));
+ }
+ // A new access token from refresh, or the final owner completion, must prove
+ // the same Calendar anew. A valid earlier exchange cannot mask a mismatch.
+ for(const stage of ['refreshed_identity','completion_identity']){
+  for(const [pages,reason] of [
+   [[calendarPage([selfCalendar('foreign-calendar@example.invalid')])],'account_mismatch'],
+   [[calendarPage([])],'calendar_binding_missing'],
+   [[calendarPage([selfCalendar('business-calendar@example.invalid'),selfCalendar('foreign-calendar@example.invalid')])],'calendar_binding_conflict'],
+  ]){
+   const f=await fixture(),flow=await begin(f);
+   if(stage==='refreshed_identity'){
+    f.refreshedCalendarPages=pages;
+    assert.notEqual(redirectResult(await callback(f,flow)),'pending');
+   }else{
+    assert.equal(redirectResult(await callback(f,flow)),'pending');f.refreshedCalendarPages=pages;
+    assert.ok((await api(f,'google-complete',{method:'POST'})).status>=400);
+   }
+   const failure=storedDiagnostics(f)[0];assert.equal(failure.reason,reason);
+   assert.equal(failure.stage,stage==='refreshed_identity'&&reason==='account_mismatch'?'identity_match':stage);
+   assert.deepEqual(await credential(f),{refreshToken:f.env.GOOGLE_REFRESH_TOKEN,revision:0});
+   assert.equal(f.sql.prepare('SELECT count(*) n FROM recovery_google_credentials').get().n,0);
+  }
+ }
+ // A sealed legacy subject is not a Calendar identifier. Reject old or
+ // malformed pin shapes rather than interpreting them as the new binding.
+ for(const pin of [{userId:'business-calendar@example.invalid'},{bindingType:'subject',primaryCalendarId:'business-calendar@example.invalid'},{bindingType:'primary_calendar',primaryCalendarId:'malformed'}]){
+  const f=await fixture();
+  const ciphertext=await testEnvelope(f,'recovery_google_credentials',{refreshToken:f.env.GOOGLE_REFRESH_TOKEN,clientId:f.env.GOOGLE_CLIENT_ID,revision:1,...pin});
+  f.sql.prepare('INSERT INTO recovery_google_credentials(owner_id,revision,token_ciphertext,updated_ms,operation_hash) VALUES(?,?,?,?,?)').run(f.ownerId,1,ciphertext,Date.now(),'old-shape');
+  await assert.rejects(()=>credential(f),/could not be read/);
+  assert.ok((await api(f,'google-connect',{method:'POST'})).status>=400);
+  assert.equal(f.exchangeCount,0);
+ }
+ {
+  const f=await fixture(),flow=await begin(f);
+  const oldEnvelope=await testEnvelope(f,'recovery_google_handshakes',{userId:'business-calendar@example.invalid',clientId:f.env.GOOGLE_CLIENT_ID});
+  f.sql.prepare('UPDATE recovery_google_handshakes SET verifier_ciphertext=?').run(oldEnvelope);
+  assert.equal(redirectResult(await callback(f,flow)),'failed');assert.equal(f.exchangeCount,0);
+  assert.equal(storedDiagnostics(f)[0].reason,'calendar_binding_invalid');
+  assert.deepEqual(await credential(f),{refreshToken:f.env.GOOGLE_REFRESH_TOKEN,revision:0});
  }
  // Concurrent callbacks consume a state once; completed flow replay cannot
  // exchange again or advance the connection revision.
@@ -458,7 +551,7 @@ try{
  // record against all dummy credentials, browser cookies and account values.
  const allowedKeys=new Set(['event','stage','status','reason','kind','providerStatus','providerCode']);
  const allowedStages=new Set(['request_validation','state_lookup','state_claim','code_validation','state_decrypt','baseline_check','token_exchange','candidate_tokens','candidate_identity','candidate_refresh','refreshed_identity','identity_match','calendar_probe','baseline_recheck','candidate_encrypt','candidate_stage','completion_validation','completion_refresh','completion_identity','completion_promotion']);
- const allowedReasons=new Set(['scope_set_mismatch','subject_missing','subject_invalid','audience_missing','audience_invalid','audience_mismatch','authorized_party_mismatch','refresh_token_missing','access_token_missing','account_mismatch','provider_request_failed','validation_failed','unexpected_failure']);
+ const allowedReasons=new Set(['scope_set_mismatch','calendar_binding_missing','calendar_binding_invalid','calendar_binding_conflict','calendar_binding_pagination','audience_missing','audience_invalid','audience_mismatch','authorized_party_mismatch','refresh_token_missing','access_token_missing','account_mismatch','provider_request_failed','validation_failed','unexpected_failure']);
  const allowedKinds=new Set(['token_exchange','token_refresh','tokeninfo','freebusy','events_list']);
  const allowedCodes=new Set(['invalid_grant','invalid_client','invalid_request','redirect_uri_mismatch','access_denied','unsupported_grant_type','unauthorized_client','invalid_scope','invalid_token','rate_limit_exceeded','PERMISSION_DENIED','UNAUTHENTICATED','RESOURCE_EXHAUSTED','INVALID_ARGUMENT','NOT_FOUND','INTERNAL','UNAVAILABLE','forbidden','insufficientPermissions','rateLimitExceeded','userRateLimitExceeded','authError','backendError','invalid','notFound','network_error','malformed_response','unrecognized']);
  for(const args of diagnostics){
