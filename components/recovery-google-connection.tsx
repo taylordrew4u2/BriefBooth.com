@@ -78,6 +78,7 @@ export function RecoveryGoogleConnection({ token }: { token: string }) {
   return <section id="google-connection" tabIndex={-1} aria-label="Google Calendar and Meet" className="space-y-3 rounded-2xl bg-secondary p-5">
     <h3 className="font-semibold">Google Calendar &amp; Meet</h3>
     <p>BriefBooth checks busy times and creates a Google Calendar event and Meet link after you approve a request. Rescheduling updates that event; cancelling removes it.</p>
+    <p className="text-sm">To verify the same business calendar when reconnecting, BriefBooth reads organizer email metadata from existing primary-calendar events. This check does not request their titles, descriptions, times, attendees, or organizer names. <a className="underline" href="/privacy/#google-data">How BriefBooth uses and protects Google data</a>.</p>
     <p role="status">{status ? status.connected ? "Your business Calendar connection is configured." : "Your Google connection needs attention." : "Checking your Google connection…"}</p>
     {status?.enabled && <><p className="text-sm">Reconnect with the same business Google account. Your current connection stays in place until both Calendar permissions and the replacement connection are verified.</p><Button type="button" disabled={busy} onClick={connect}>{busy ? "Opening Google…" : "Reconnect Google Calendar & Meet"}</Button></>}
     <Button type="button" variant="outline" disabled={busy} onClick={() => setReload(value => value + 1)}>Refresh connection status</Button>
