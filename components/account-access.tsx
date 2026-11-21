@@ -14,6 +14,11 @@ export default function AccountAccess() {
   const [mode, setMode] = useState("signin");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [googleConnectionIntent, setGoogleConnectionIntent] = useState(false);
+  useEffect(() => {
+    const google = new URLSearchParams(window.location.search).get("connect") === "google";
+    queueMicrotask(() => setGoogleConnectionIntent(google));
+  }, []);
   const routeAccount = useCallback(async () => {
     const role = await db().rpc("account_role");
     if (role.error) { setMessage("Could not load your account. Please reload and try again."); return; }
@@ -143,6 +148,8 @@ export default function AccountAccess() {
               ? "A little setup. A lot less scheduling."
               : "Your next conversation is waiting."}
           </p>
+          {googleConnectionIntent && <p>To connect Google Calendar &amp; Meet, first sign in to your BriefBooth consultant account. You authorize Google Calendar separately in Studio.</p>}
+          <p className="text-sm"><Link className="underline underline-offset-4" href="/privacy/#google-data">Privacy and how BriefBooth uses Google Calendar data</Link></p>
           {!configured && (
             <div className="notice">
               Live accounts are not connected yet. Connect Supabase using the
