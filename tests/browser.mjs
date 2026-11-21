@@ -9,19 +9,36 @@ try {
   for (const width of [390, 1440, 1728]) {
     await page.setViewportSize({ width, height: 1000 });
     await page.goto(base);
-    await page.getByRole("heading", { name: /Your expertise/ }).waitFor();
+    await page
+      .getByRole("heading", { name: /Your idea\.\s*A clearer plan\.\s*Let’s talk\./ })
+      .waitFor();
     assert(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
       "Home has horizontal overflow",
     );
-    await page.getByText("Do my clients need an account?").click();
-    await page
-      .getByText(
-        "No. They complete your questionnaire, select a consultation, and choose an available time.",
-      )
-      .waitFor();
+    assert.equal(
+      await page.getByRole("link", { name: /Request a consultation/ }).getAttribute("href"),
+      "/book/4u-digital/",
+      "The homepage must keep booking inside BriefBooth",
+    );
+    for (const [question, answer] of [
+      ["Does this consultation cost anything?", /The first 30-minute consultation is free/],
+      ["How do I check or cancel my request?", /Keep the private booking link shown after you submit/],
+      ["Where do consultants manage their bookings?", /each consultant manages their own booking page and calendar connections/],
+      ["How does BriefBooth use Google Calendar data?", /Calendar events and Google Meet links for consultations/],
+    ]) {
+      const summary = page.getByText(question, { exact: true });
+      const details = page.locator("details").filter({ has: summary });
+      const content = details.locator("p");
+      assert.equal(await content.isVisible(), false, "FAQ answers start collapsed");
+      await summary.click();
+      await content.waitFor();
+      assert.match(await content.innerText(), answer);
+      await summary.click();
+      await content.waitFor({ state: "hidden" });
+    }
   }
   await page.setViewportSize({ width: 390, height: 1000 });
   await page.goto(base + "/book/demo");
