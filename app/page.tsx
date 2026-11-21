@@ -246,7 +246,8 @@ function ConsultationHome() {
         <h2>Before you book.</h2>
         <details><summary>Does this consultation cost anything?</summary><p>No. The first 30-minute consultation is free. You won’t enter a card or make a payment to book.</p></details>
         <details><summary>How do I check or cancel my request?</summary><p>Keep the private booking link shown after you submit. You can use it to check your status or cancel before your appointment starts.</p></details>
-        <details><summary>Can I create a consultant account?</summary><p>Account sign-in, new consultant registration, and the full Studio are temporarily unavailable. This booking page is for 4u Digital consultations.</p></details>
+        <details><summary>Where do consultants manage their bookings?</summary><p>Existing consultants can <Link href="/account/sign-in/">sign in</Link> to their own Studio. This public booking page is for 4u Digital consultations; each consultant manages their own booking page and calendar connections.</p></details>
+        <details><summary>How does BriefBooth use Google Calendar data?</summary><p>BriefBooth checks the connected consultant’s calendar availability and manages Calendar events and Google Meet links for consultations. <Link href="/privacy/#google-data">Read what Google data is accessed and how it is used, stored, shared and deleted.</Link></p></details>
       </section>
     </main>
     <footer className="site-footer"><Logo /><span><Link href="/support/">Support</Link> · <Link href="/privacy/">Privacy</Link> · <Link href="/terms/">Terms</Link></span><Link href="/booking-review/">Review consultation requests ↗</Link></footer>
