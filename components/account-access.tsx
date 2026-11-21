@@ -6,7 +6,7 @@ import { Logo } from "@/components/site-header";
 import { db, configured } from "@/lib/supabase";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { accountCallbackPath, accountDestination, clientWorkspacePath } from "@/lib/account-routing";
+import { accountCallbackPath, accountDestination, accountPasswordCallbackPath, clientWorkspacePath } from "@/lib/account-routing";
 export default function AccountAccess() {
   const router = useRouter();
   const formHeading = useRef<HTMLHeadingElement>(null);
@@ -59,7 +59,7 @@ export default function AccountAccess() {
       const password = String(form.get("password"));
       if (mode === "reset") {
         const { error } = await db().auth.resetPasswordForEmail(email, {
-          redirectTo: location.origin + "/account?mode=password",
+          redirectTo: location.origin + accountPasswordCallbackPath(location.search),
         });
         if (error) throw error;
         setMessage("Check your email for the password reset link.");

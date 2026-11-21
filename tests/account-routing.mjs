@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-import { accountCallbackPath, accountDestination, accountSignInPath, consultantWorkspacePath, needsAccountAccess, needsConsultantWorkspace, isRecoveryOwnerWorkspace, recoveryOwnerId, usesRecoveryBooking } from '../lib/account-routing.ts';
+import { accountCallbackPath, accountDestination, accountPasswordCallbackPath, accountSignInPath, consultantWorkspacePath, needsAccountAccess, needsConsultantWorkspace, isRecoveryOwnerWorkspace, recoveryOwnerId, usesRecoveryBooking } from '../lib/account-routing.ts';
 import { bookingMatchesSearch } from '../lib/booking-search.ts';
 import { observeWorkspaceIdentity } from '../lib/workspace-session.ts';
 
@@ -54,13 +54,17 @@ assert.equal(accountSignInPath('?connect=zoom&google=pending'), '/account/sign-i
 // Execute the actual post-auth handler, including failure and client-intent paths.
 const file = 'components/account-access.tsx';
 const source = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-let routeCallback;
+let routeCallback, submitFunction, savePasswordFunction;
 function visit(node) {
   if (ts.isVariableDeclaration(node) && node.name.getText(source) === 'routeAccount') routeCallback = node.initializer.arguments[0];
+  if (ts.isFunctionDeclaration(node) && node.name?.text === 'submit') submitFunction = node;
+  if (ts.isFunctionDeclaration(node) && node.name?.text === 'savePassword') savePasswordFunction = node;
   ts.forEachChild(node, visit);
 }
 visit(source);
 assert(routeCallback);
+assert(submitFunction);
+assert(savePasswordFunction);
 // Execute both real signup and OAuth callback expressions. The fixed callback
 // retains a recognized provider through external confirmation without accepting
 // arbitrary redirect targets from URL parameters.
@@ -90,6 +94,65 @@ for(const [search,expected] of [
   }
 }
 const js = ts.transpileModule(`const routeAccount = ${routeCallback.getText(source)};`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+
+// Password recovery is an external round trip too. Exercise the real reset
+// submit, then the real password-save/role-routing handler at the returned URL.
+// Only view intent survives; neither the callback nor a pending marker grants
+// consultant privileges or changes the deliberately separate client intent.
+const passwordCases = [
+  { search: '', callback: '/account?mode=password', recovery: '/studio/?workspace=consultant', legacy: '/studio' },
+  { search: '?connect=google', callback: '/account?mode=password&connect=google', recovery: '/studio/?workspace=consultant&connect=google', legacy: '/studio/?connect=google' },
+  { search: '?connect=zoom', callback: '/account?mode=password&connect=zoom', recovery: '/studio/?workspace=consultant&connect=zoom', legacy: '/studio/?connect=zoom' },
+  { search: '?google=pending', callback: '/account?mode=password&connect=google&google=pending', recovery: '/studio/?workspace=consultant&connect=google&google=pending', legacy: '/studio/?connect=google' },
+  { search: '?connect=google&google=pending&mode=signup&next=https://attacker.example&returnTo=//attacker.example&redirect_uri=https://attacker.example&code=private-code&token=private-token&state=private-state', callback: '/account?mode=password&connect=google&google=pending', recovery: '/studio/?workspace=consultant&connect=google&google=pending', legacy: '/studio/?connect=google' },
+  { search: '?connect=zoom&google=pending', callback: '/account?mode=password&connect=zoom', recovery: '/studio/?workspace=consultant&connect=zoom', legacy: '/studio/?connect=zoom' },
+  { search: '?connect=https%3A%2F%2Fattacker.example&google=pending&mode=signup&next=%2F%2Fattacker.example', callback: '/account?mode=password', recovery: '/studio/?workspace=consultant', legacy: '/studio' },
+  { search: '?google=failed&mode=signup&next=//attacker.example&code=private-code', callback: '/account?mode=password', recovery: '/studio/?workspace=consultant', legacy: '/studio' },
+];
+const submitJs = ts.transpileModule(submitFunction.getText(source), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+const savePasswordJs = ts.transpileModule(savePasswordFunction.getText(source), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+for (const { search, callback, recovery, legacy } of passwordCases) {
+  const requests = [], busy = [], messages = [];
+  const submit = vm.runInNewContext(`${submitJs}; submit`, {
+    mode: 'reset', accountPasswordCallbackPath, location: { origin: 'https://briefbooth.com', search },
+    FormData: class { get(key) { return key === 'email' ? 'reset-fixture@example.invalid' : ''; } },
+    db: () => ({ auth: { resetPasswordForEmail: async (email, options) => { requests.push({ email, ...options }); return { error: null }; } } }),
+    setBusy: value => busy.push(value), setMessage: value => messages.push(value),
+  });
+  await submit({ preventDefault() {}, currentTarget: {} });
+  assert.deepEqual(requests, [{ email: 'reset-fixture@example.invalid', redirectTo: 'https://briefbooth.com' + callback }]);
+  assert.deepEqual(busy, [true, false]);
+  assert.equal(messages.at(-1), 'Check your email for the password reset link.');
+  const returned = new URL(requests[0].redirectTo);
+  assert.equal(returned.origin, 'https://briefbooth.com');
+  assert.deepEqual(returned.searchParams.getAll('mode'), ['password']);
+  assert.equal(needsAccountAccess(returned.search), true);
+  assert.doesNotMatch(returned.href, /attacker|private-|signup|returnTo|redirect_uri|code=|token=|state=/);
+  for (const enabled of [true, false]) {
+    for (const [role, clientIntent] of [['consultant', false], ['client', false], ['consultant', true]]) {
+      const routes = [], calls = [], removals = [], saveBusy = [], saveMessages = [];
+      const save = vm.runInNewContext(`${js}; ${savePasswordJs}; savePassword`, {
+        accountDestination, process: { env: { NEXT_PUBLIC_BOOKING_RECOVERY: enabled ? '1' : '0' } },
+        window: { location: { search: returned.search } },
+        FormData: class { get() { return 'test-only-placeholder'; } },
+        db: () => ({
+          auth: { updateUser: async () => { calls.push('updateUser'); return { error: null }; } },
+          rpc: async name => { calls.push(name); return { data: role, error: null }; },
+        }),
+        router: { replace: path => routes.push(path) },
+        localStorage: { getItem: () => clientIntent ? String(Date.now()) : null, removeItem: key => removals.push(key) },
+        setBusy: value => saveBusy.push(value), setMessage: value => saveMessages.push(value),
+      });
+      await save({ preventDefault() {}, currentTarget: {} });
+      const destination = role === 'consultant' && !clientIntent ? (enabled ? recovery : legacy) : (enabled ? '/client/?workspace=account' : '/client');
+      assert.deepEqual(routes, [destination], 'Password recovery keeps permitted connection intent and the verified role/client destination');
+      assert.deepEqual(calls, ['updateUser', 'account_role']);
+      assert.deepEqual(removals, ['briefbooth_client_login']);
+      assert.deepEqual(saveBusy, [true, false]);
+      assert.deepEqual(saveMessages, ['']);
+    }
+  }
+}
 for (const [role, clientIntent, error] of [['consultant', false, false], ['client', false, false], ['consultant', true, false], ['consultant', false, true]]) {
   const routes = [], removed = [], messages = [];
   const run = vm.runInNewContext(`${js}; routeAccount`, {
@@ -184,4 +247,4 @@ authEvent('SIGNED_IN');
 await new Promise(resolve => setTimeout(resolve, 5));
 assert.equal(identities.length, before);
 assert.equal(unsubscribed, true);
-console.log('PASS account roles, client intent, provider callbacks, safe fixed redirects, owner isolation, recovery booking routing, and loaded-request search');
+console.log('PASS account roles, client intent, provider/password callbacks, safe fixed redirects, owner isolation, recovery booking routing, and loaded-request search');

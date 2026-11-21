@@ -24,6 +24,10 @@ export function accountCallbackPath(search = "") {
   const query = connectionQuery(search);
   return "/account/" + (query ? "?" + query : "");
 }
+export function accountPasswordCallbackPath(search = "") {
+  const query = connectionQuery(search);
+  return "/account?mode=password" + (query ? "&" + query : "");
+}
 export function consultantWorkspacePath(search = "") {
   const query = connectionQuery(search);
   return "/studio/?workspace=consultant" + (query ? "&" + query : "");
